@@ -5,7 +5,7 @@
 tier_external_gb() {
   # Padded totals (models + ComfyUI + apps). Ultimate measured ~147 GB on real install (Jul 2026).
   case "$1" in
-    starter)   echo 55 ;;
+    starter)   echo 75 ;;
     standard)  echo 110 ;;
     pro)       echo 135 ;;
     ultimate)  echo 150 ;;
@@ -26,7 +26,7 @@ tier_internal_min_gb() {
 tier_drive_min_gb() {
   # Recommended free space on external SSD (external estimate + breathing room)
   case "$1" in
-    starter)   echo 70 ;;
+    starter)   echo 90 ;;
     standard)  echo 130 ;;
     pro)       echo 160 ;;
     ultimate)  echo 175 ;;
