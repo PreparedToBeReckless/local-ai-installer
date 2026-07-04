@@ -954,7 +954,7 @@ install_ai_studio_web_app() {
   run rm -rf "$dest"
   run cp -R "$src" "$dest"
   chmod +x "$dest/Contents/MacOS/ai-studio-web"
-  ok "AI Studio Web (light local browser) → Applications/"
+  ok "AI Studio Web (built-in localhost viewer) → Applications/"
 }
 
 install_open_webui() {
@@ -1353,7 +1353,7 @@ open_diffusionbee() {
   open "${LOCAL_AI_ROOT}/Applications/DiffusionBee.app" 2>/dev/null || true
 }
 
-# Opens localhost UIs in AI Studio Web (or Chrome app-mode / Safari) — not the default browser.
+# Opens localhost UIs in AI Studio Web (native WKWebView) — not the default browser.
 open_local_url() {
   local url="${1:?URL required}"
   local app="${LOCAL_AI_ROOT}/Applications/AI Studio Web.app"
@@ -1361,17 +1361,7 @@ open_local_url() {
     open -na "$app" --args "$url"
     return 0
   fi
-  local bin
-  for bin in \
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-    "/Applications/Chromium.app/Contents/MacOS/Chromium" \
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
-    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"; do
-    if [[ -x "$bin" ]]; then
-      "$bin" --app="$url" --new-window --no-first-run --disable-features=TranslateUI &>/dev/null &
-      return 0
-    fi
-  done
+  warn "AI Studio Web.app missing — falling back to Safari for $url"
   open -na "Safari" "$url"
 }
 

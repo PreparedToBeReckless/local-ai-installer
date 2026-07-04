@@ -11,6 +11,8 @@ VOLUME_NAME="Local AI Studio"
 
 echo "═══ Building $DMG_NAME ═══"
 
+"$ROOT/assets/build-ai-studio-web.sh"
+
 rm -rf "$ROOT/dist"
 mkdir -p "$STAGING"
 
