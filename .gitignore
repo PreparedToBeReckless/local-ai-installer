@@ -20,6 +20,8 @@ assets/icon-source.jpg
 *.log
 /tmp/
 .local-ai-studio-installer.json
+.venv-social/
+.github-playwright-auth/
 
 # Editor
 .idea/
