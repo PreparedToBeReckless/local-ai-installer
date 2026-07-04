@@ -980,7 +980,13 @@ setup_comfyui_models() {
   local root="$1"
   local models_cfg="$root/extra_model_paths.yaml"
   if ssd_is_exfat; then
-    [[ -f "$models_cfg" ]] && return 0
+    # Rewrite when missing or stale (older installs lacked text_encoders / pack folders)
+    if [[ -f "$models_cfg" ]] \
+      && grep -q 'text_encoders:' "$models_cfg" 2>/dev/null \
+      && grep -q 'insightface:' "$models_cfg" 2>/dev/null \
+      && grep -q 'sam2:' "$models_cfg" 2>/dev/null; then
+      return 0
+    fi
     cat > "$models_cfg" <<YAML
 ssd_models:
   base_path: $EXTERNAL_AI/comfyui-models
