@@ -14,7 +14,10 @@ Built and dogfooded on an **M4 MacBook Air 16GB** + portable SSD. Pick a tier, c
 
 ![Platform](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+![Release](https://img.shields.io/github/v/release/PreparedToBeReckless/local-ai-installer?label=release)
 ![Tier](https://img.shields.io/badge/SSD-55–150%20GB-orange)
+
+**Latest: [v1.1.0](https://github.com/PreparedToBeReckless/local-ai-installer/releases/tag/v1.1.0)** — toggleable install packages, optional Unfiltered Models Pack, clearer progress & space estimates.
 
 ---
 
@@ -52,10 +55,36 @@ Built and dogfooded on an **M4 MacBook Air 16GB** + portable SSD. Pick a tier, c
 
 1. **Download** the [latest release DMG](https://github.com/PreparedToBeReckless/local-ai-installer/releases) or build from source (`./build-dmg.sh`).
 2. Drag **`Install Local AI Studio (GUI).app`** to your Desktop.
-3. Plug in external SSD → click **Allow SSD Access** (step 2) → pick tier → **INSTALL** (**STANDARD** ★ recommended for M4 16GB).
+3. In the GUI:
+   - **Step 1** — click a package card (or **Select** checkbox). **STANDARD** ★ is the sweet spot on M4 16GB.
+   - **Step 2** — optional **Unfiltered Models Pack** (+~150 GB advanced edit models).
+   - **Step 3** — plug in SSD → **Allow SSD Access** → paste HuggingFace token if needed → **INSTALL**.
 4. When done: open **`AI Studio Launcher.app`** on your Desktop.
 
 Full walkthrough, flags, and troubleshooting are below.
+
+---
+
+## Choosing what to install (GUI)
+
+The installer separates **studio packages** from the **Unfiltered Models Pack**:
+
+| You select | What runs | Install button |
+|------------|-----------|----------------|
+| **Package only** (Starter → Ultimate) | Full studio path: audit apps → Homebrew → Ollama → LM Studio & DiffusionBee → ComfyUI verify + tier nodes → tier models | **INSTALL LOCAL AI STUDIO** |
+| **Unfiltered Pack only** | Pack models only (~150 GB) — no apps/Homebrew/Ollama setup | **DOWNLOAD MODELS ONLY** |
+| **Package + Pack** | Full studio for the tier, then pack models after | **INSTALL LOCAL AI STUDIO** |
+
+- **Nothing pre-selected** on launch — pick a package explicitly (or check only the pack).
+- Each package card has a **Details** button (per-tier popup, no tab ghosting).
+- **Re-run on an existing SSD:** apps are verified quickly, ComfyUI syncs missing tier nodes, then models fill gaps. Progress tracks **new** downloads this session (not old SSD content).
+
+### Unfiltered Models Pack (optional add-on)
+
+~150 GB extra: Qwen Image Edit, Flux Fill/Kontext, InstantID, SAM2, MLX vision models, and more.  
+3 optional photoreal weights need HuggingFace account + content preferences + Read token (install finishes even if they skip).
+
+Use the in-app **Setup guide** before install for best results, or run `scripts/fetch-sensitive-models.sh` on your SSD later.
 
 ---
 
@@ -69,9 +98,12 @@ Sizes are **measured + padded** (Ultimate full install ≈ **147 GB** on a real 
 | **STANDARD** | ~110 GB | ~6 GB | **Recommended** M4 16GB |
 | **PRO** | ~135 GB | ~6–8 GB | Relight, inpaint, faceswap, SD 3.5 |
 | **ULTIMATE** | ~150 GB | ~6–8 GB | Full curated catalog (26 ComfyUI models) |
+| **+ Unfiltered Pack** | +~150 GB | — | Optional add-on (check step 2 in GUI) |
 
 **Internal drive** = Homebrew, Ollama binary, Docker (if installed).  
 **External SSD** = models, ComfyUI, GUI apps → `YourSSD/LOCAL_AI_GEN/`
+
+**Free space shown in GUI** = recommended headroom per tier (e.g. Ultimate ~175 GB free for package only; +165 GB if pack is checked). Download size is shown separately.
 
 Typical install time: **1–7 hours** depending on tier and internet.
 
@@ -125,11 +157,11 @@ Upstream apps and models (Ollama, ComfyUI, LM Studio, etc.) are their own projec
 3. **Recommended:** drag **`Install Local AI Studio (GUI).app`** to Desktop before running.  
    Running from inside the DMG works for a quick test, but ejecting the DMG later can confuse macOS if the app is still open.
 4. Plug in external SSD, launch the app:
-   - Click **Allow SSD Access** in step 2 (avoids Mac folder-permission popups)
-   - Pick your drive (last path saved in `~/.local-ai-studio-installer.json` per user)
-   - Pick tier — cards show **name + sizes**; scroll the detail panel for full model lists
-   - Optional: **SD 3.5 license** + HuggingFace token (see below)
-   - Click **INSTALL**
+   - **Step 1** — select one package (Starter / Standard / Pro / Ultimate) or skip if you only want the pack
+   - **Step 2** — optional **Unfiltered Models Pack** checkbox
+   - **Step 3** — pick SSD, click **Allow SSD Access** (avoids Mac folder-permission popups)
+   - Optional: HuggingFace **Read** token (SD 3.5 + 3 pack realism weights — see below)
+   - One **Start install?** summary (no more stacked popups) → **INSTALL**
 5. When done, on your Desktop:
    - **`AI Studio Launcher.app`** — one window, buttons for each app
    - **`AI Studio Apps/`** — folder with shortcuts to each GUI
@@ -153,16 +185,19 @@ You do **not** need MacPorts, nix, or manual `pkg` installs.
 
 ---
 
-## HuggingFace (SD 3.5 Medium only)
+## HuggingFace (optional)
 
-Only **one** ComfyUI model needs extra steps: **SD 3.5 Medium** (Stability). **CyberRealistic** is public — no license button.
+**SD 3.5 Medium** (Ultimate tier): Stability license + Read token. **CyberRealistic** is public — no license button.
+
+**Unfiltered Pack:** 3 optional realism weights — account, content preferences, Read token. Rest of pack installs without them.
 
 1. Log into [huggingface.co](https://huggingface.co)
-2. Open [stable-diffusion-3.5-medium](https://huggingface.co/stabilityai/stable-diffusion-3.5-medium) → **Agree and access repository**
-3. Create a **Read** token → paste in the installer (or `huggingface-cli login`)
-4. Re-run **INSTALL** — only missing files download
+2. For SD 3.5: [stable-diffusion-3.5-medium](https://huggingface.co/stabilityai/stable-diffusion-3.5-medium) → **Agree and access repository**
+3. For pack realism weights: use the in-app **Setup guide** (content preferences walkthrough)
+4. Create a **Read** token → **Paste Token from Clipboard** in step 3
+5. Re-run **INSTALL** — only missing files download
 
-Token alone is **not** enough (HuggingFace returns HTTP 403 without the license click).
+Token alone is **not** enough for gated models (HuggingFace returns HTTP 403 without license/content prefs).
 
 ---
 
@@ -183,10 +218,11 @@ Both run the same script: `install-local-ai.sh`
 
 | Feature | What it does |
 |---------|----------------|
-| **Live SSD counter** | Green line: `SSD: 26 GB of ~150 GB target` (updates ~every 12s) |
-| **Progress %** | Tied to **SSD size vs tier target**, not a frozen phase number |
-| **Phase label** | e.g. `Ollama models (3/8)` or `ComfyUI image models (5…)` |
-| **Elapsed time** | Running clock + typical total time for your tier |
+| **Install mode line** | Log shows `Mode: Full studio package · tier=ULTIMATE · flags=…` so you know what ran |
+| **Live SSD counter** | `SSD: 26 GB of ~150 GB (ULTIMATE)` — updates ~every 12s |
+| **Progress %** | New downloads **this session** (baseline at start) + setup phases through ComfyUI |
+| **Phase label** | Apps check, Ollama pull, ComfyUI node sync, model verification |
+| **Elapsed time** | Running clock + typical total time for your selection |
 | **Log tail** | Installer output from `/tmp/local-ai-installer-*.log` |
 | **Sleep prevention** | `caffeinate` — keep Mac **plugged in** anyway |
 | **SSD access** | **Allow SSD Access** + optional Full Disk Access — avoids Mac popup spam |
@@ -197,7 +233,7 @@ Both run the same script: `install-local-ai.sh`
 tail -f /tmp/local-ai-installer-*.log
 ```
 
-**ComfyUI re-runs:** If ComfyUI is already on your SSD, the installer skips git/pip (no repeated popups).
+**Re-runs on an existing SSD:** Full package installs still audit apps, verify Ollama, sync missing ComfyUI tier nodes, then check models. Git/pip is skipped when ComfyUI is already complete (no repeated folder popups).
 
 ---
 
@@ -216,7 +252,9 @@ tail -f /tmp/local-ai-installer-*.log
 
 ./install-local-ai.sh --audit-only --tier standard --ssd /Volumes/MySSD --no-gui
 ./install-local-ai.sh --refresh-hf --tier standard --ssd /Volumes/MySSD --no-gui
-./install-local-ai.sh --models-only --tier ultimate --ssd /Volumes/MySSD --no-gui   # HF models only
+./install-local-ai.sh --unfiltered-pack-only --ssd /Volumes/MySSD --no-gui          # pack only
+./install-local-ai.sh --tier ultimate --unfiltered-pack --ssd /Volumes/MySSD --no-gui
+./install-local-ai.sh --models-only --tier ultimate --ssd /Volumes/MySSD --no-gui   # tier HF models only (CLI)
 ./install-local-ai.sh --no-comfy --tier ultimate --ssd /Volumes/MySSD --no-gui      # skip ComfyUI step
 ./install-local-ai.sh --dry-run --tier standard --ssd /Volumes/MySSD --no-gui
 
@@ -282,7 +320,9 @@ app-gui/                 # GUI .app bundle
 | ComfyUI step keeps re-running | Update to latest build — skips when already set up |
 | SD 3.5 won't download | Accept license on HuggingFace + paste Read token |
 | GUI text blank / grey | Drag app to Desktop; use terminal wizard |
-| Progress stuck at one % | Bar tracks SSD GB vs tier target — wait for counter to update |
+| Progress jumps high immediately | Fixed in v1.1.0 — bar uses session baseline; re-runs on full SSDs start low |
+| Wrong GB estimate (e.g. 300 GB for Ultimate) | Fixed in v1.1.0 — space line matches tier card + optional pack |
+| Package selected but only models run | Fixed in v1.1.0 — packages always use full studio path; pack-only is separate |
 | Exit 143 mid-install | Re-run INSTALL — models on SSD are kept |
 | Ollama empty | Use Desktop launcher, or set `OLLAMA_MODELS` to SSD path |
 | HF model failed | Gated or offline — see `docs/HUGGINGFACE.txt` |
@@ -307,6 +347,25 @@ open dist/Local-AI-Studio-Installer.dmg
 ```
 
 No code signing — fine for personal use and GitHub hobby releases.
+
+---
+
+## Changelog
+
+### v1.1.0 (July 2026)
+
+- **GUI:** Toggleable tier packages + separate **Unfiltered Models Pack** checkbox (no confusing install-mode radios)
+- **GUI:** Per-card **Details** popups; nothing pre-selected on launch
+- **Fix:** Package selection always runs **full studio** install (apps + ComfyUI verify + models) — not silent models-only on existing SSDs
+- **Fix:** Install button label matches selection; space estimates align with tier cards (~175 GB free for Ultimate, not ~320 GB)
+- **Fix:** Progress bar uses session baseline — re-runs don’t jump to 87% instantly
+- **Fix:** Single **Start install?** dialog instead of stacked pre-install popups
+- **Engine:** `sync_comfyui_tier_nodes` on re-run — installs missing ComfyUI nodes for selected tier
+- **Engine:** Unfiltered pack catalog, audit, and `--unfiltered-pack-only` / `--unfiltered-pack` flags
+
+### v1.0.0
+
+- Initial public release — tiered GUI + terminal installer, 26 ComfyUI models, Desktop launcher hub
 
 ---
 

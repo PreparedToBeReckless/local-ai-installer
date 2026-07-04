@@ -172,3 +172,81 @@ get_models_for_tier() {
       ;;
   esac
 }
+
+# ── Unfiltered Models Pack (~150 GB add-on, M4-safe FP8/mixed) ───────────────
+# Format: subdir|filename|repo/resolve/path|size_mb|label
+UNFILTERED_PACK_CATALOG=(
+  "diffusion_models|qwen_image_edit_2509_fp8_e4m3fn.safetensors|Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors|19485|Qwen Image Edit 2509 FP8"
+  "diffusion_models|qwen_image_edit_2511_fp8mixed.safetensors|Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors|19583|Qwen Image Edit 2511 FP8 mixed"
+  "diffusion_models|qwen_image_fp8_e4m3fn.safetensors|Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_fp8_e4m3fn.safetensors|19485|Qwen Image Gen FP8"
+  "text_encoders|qwen_2.5_vl_7b_fp8_scaled.safetensors|Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors|8950|Qwen 2.5 VL FP8 text encoder"
+  "vae|qwen_image_vae.safetensors|Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors|243|Qwen Image VAE"
+  "loras|Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors|lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors|811|Qwen Edit Lightning 4-step"
+  "loras|Qwen-Image-Edit-2509-Relight.safetensors|Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/loras/Qwen-Image-Edit-2509-Relight.safetensors|226|Qwen Edit Relight LoRA"
+  "loras|Qwen-Image-Edit-2509-Anything2RealAlpha.safetensors|Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/loras/Qwen-Image-Edit-2509-Anything2RealAlpha.safetensors|582|Qwen Anything2Real LoRA"
+  "loras|Qwen-Image-Edit-2509-Light-Migration.safetensors|Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/loras/Qwen-Image-Edit-2509-Light-Migration.safetensors|226|Qwen Light Migration LoRA"
+  "loras|Qwen-Edit-2509-Multiple-angles.safetensors|Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/loras/Qwen-Edit-2509-Multiple-angles.safetensors|226|Qwen Multiple Angles LoRA"
+  "loras|Qwen-Image-Edit-2509-Fusion.safetensors|Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/loras/Qwen-Image-Edit-2509-Fusion.safetensors|226|Qwen Fusion LoRA"
+  "loras|Qwen-Image-Edit-2509-White_to_Scene.safetensors|Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/loras/Qwen-Image-Edit-2509-White_to_Scene.safetensors|226|Qwen White-to-Scene LoRA"
+  "diffusion_models|flux1-dev-kontext_fp8_scaled.safetensors|Comfy-Org/flux1-kontext-dev_ComfyUI/resolve/main/split_files/diffusion_models/flux1-dev-kontext_fp8_scaled.safetensors|11354|Flux Kontext FP8"
+  "diffusion_models|FLUX.1-Fill-dev_fp8.safetensors|1038lab/FLUX.1-Fill-dev_fp8/resolve/main/FLUX.1-Fill-dev_fp8.safetensors|11352|Flux Fill FP8"
+  "text_encoders|clip_l.safetensors|comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors|235|Flux CLIP-L"
+  "text_encoders|t5xxl_fp8_e4m3fn.safetensors|comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors|4668|Flux T5XXL FP8"
+  "ipadapter|flux-ip-adapter-v2.safetensors|XLabs-AI/flux-ip-adapter-v2/resolve/main/ip_adapter.safetensors|1009|Flux IP-Adapter v2"
+  "controlnet|instantid_controlnet.safetensors|InstantX/InstantID/resolve/main/ControlNetModel/diffusion_pytorch_model.safetensors|2387|InstantID ControlNet"
+  "ipadapter|instantid_ipadapter.bin|InstantX/InstantID/resolve/main/ip-adapter.bin|1613|InstantID IP-Adapter"
+  "insightface|antelopev2.zip|MonsterMMORPG/tools/resolve/main/antelopev2.zip|344|InsightFace Antelopev2"
+  "sam2|sam2_hiera_large.pt|facebook/sam2-hiera-large/resolve/main/sam2_hiera_large.pt|857|SAM2 Hiera Large"
+  "controlnet|OpenPoseXL2.safetensors|thibaud/controlnet-openpose-sdxl-1.0/resolve/main/OpenPoseXL2.safetensors|4773|OpenPose XL2"
+  "onnx|yolox_l.onnx|yzd-v/DWPose/resolve/main/yolox_l.onnx|207|DWPose YOLOX"
+  "onnx|dw-ll_ucoco_384.onnx|yzd-v/DWPose/resolve/main/dw-ll_ucoco_384.onnx|129|DWPose pose model"
+  "loras|sdxl_lightning_8step_lora.safetensors|ByteDance/SDXL-Lightning/resolve/main/sdxl_lightning_8step_lora.safetensors|376|SDXL Lightning 8-step LoRA"
+)
+
+# HuggingFace "sensitive content" — optional, never blocks main install (see fetch-sensitive-models.sh)
+UNFILTERED_PACK_SENSITIVE_CATALOG=(
+  "diffusion_models|spicy-realism-v30-unet.safetensors|John6666/spicy-realism-nsfw-mix-v30-sdxl/resolve/main/unet/diffusion_pytorch_model.safetensors|4898|Spicy Realism v30"
+  "diffusion_models|into-realism-v30-unet.safetensors|John6666/into-realism-xl-v30-sdxl/resolve/main/unet/diffusion_pytorch_model.safetensors|4898|Into Realism v30"
+  "diffusion_models|intorealism-v21-unet.safetensors|John6666/intorealism-xl-v21-sdxl/resolve/main/unet/diffusion_pytorch_model.safetensors|4898|IntoRealism v21"
+)
+
+# MLX repos pulled via huggingface-cli snapshot (full folders for LM Studio)
+UNFILTERED_PACK_MLX_CATALOG=(
+  "mlx-community/Qwen2.5-VL-7B-Instruct-4bit|5377|Qwen2.5-VL MLX — photo captions"
+  "mlx-community/gemma-3-12b-it-qat-4bit|7657|Gemma 3 12B MLX — vision reasoning"
+  "mlx-community/Llama-3.2-11B-Vision-Instruct-4bit|5730|Llama 3.2 Vision MLX"
+)
+
+estimate_unfiltered_pack_gb() {
+  local total_mb=0 entry size
+  for entry in "${UNFILTERED_PACK_CATALOG[@]}" "${UNFILTERED_PACK_SENSITIVE_CATALOG[@]}"; do
+    IFS='|' read -r _ _ _ size _ <<<"$entry"
+    total_mb=$((total_mb + size))
+  done
+  for entry in "${UNFILTERED_PACK_MLX_CATALOG[@]}"; do
+    IFS='|' read -r _ size _ <<<"$entry"
+    total_mb=$((total_mb + size))
+  done
+  echo $(( (total_mb + 1023) / 1024 ))
+}
+
+get_unfiltered_pack_models() {
+  local entry
+  for entry in "${UNFILTERED_PACK_CATALOG[@]}"; do
+    echo "$entry"
+  done
+}
+
+get_unfiltered_pack_mlx_models() {
+  local entry
+  for entry in "${UNFILTERED_PACK_MLX_CATALOG[@]}"; do
+    echo "$entry"
+  done
+}
+
+get_unfiltered_pack_sensitive_models() {
+  local entry
+  for entry in "${UNFILTERED_PACK_SENSITIVE_CATALOG[@]}"; do
+    echo "$entry"
+  done
+}

@@ -51,3 +51,15 @@ tier_time_estimate() {
     *)         echo "2–4 hours" ;;
   esac
 }
+
+unfiltered_pack_gb() {
+  echo 150
+}
+
+unfiltered_pack_drive_min_gb() {
+  echo 165
+}
+
+unfiltered_pack_time_estimate() {
+  echo "3–6 hours"
+}

@@ -48,6 +48,18 @@ TIER_SSD_GB = {
     "pro": 135,
     "ultimate": 150,
 }
+# Recommended free space on SSD (matches lib/size-estimates.sh tier_drive_min_gb)
+TIER_DRIVE_MIN_GB = {
+    "starter": 70,
+    "standard": 130,
+    "pro": 160,
+    "ultimate": 175,
+}
+
+UNFILTERED_PACK_GB = 150
+UNFILTERED_PACK_DRIVE_GB = 165
+MODELS_ONLY_DRIVE_BUFFER = 25
+MODELS_ONLY_PACK_TIME = "3–6 hours"
 
 STALL_ALERT_SEC = 300  # no log lines this long → may be waiting on a Mac folder-access popup
 PERMISSION_NOTIFY_PHASES = ("comfyui", "gui apps", "photoreal", "folder structure")
@@ -202,6 +214,11 @@ def comfyui_ready_on_ssd(ssd_volume):
         if os.path.isfile(match):
             return True
     return False
+
+
+def studio_ready_on_ssd(ssd_volume):
+    """True when a prior full studio install likely exists (ComfyUI on SSD)."""
+    return comfyui_ready_on_ssd(ssd_volume)
 
 
 def seal_ssd_access_deep(ssd_volume):
@@ -548,8 +565,11 @@ def stop_install_processes(wrapper_pid=None):
     return stopped
 
 
-def launch_install_in_terminal(installer, workdir, tier, ssd, hf_token=""):
+def launch_install_in_terminal(
+    installer, workdir, tier, ssd, hf_token="", extra_flags=None,
+):
     """Run install in Terminal.app — macOS folder permissions work reliably there."""
+    extra_flags = extra_flags or []
     launcher = "/tmp/local-ai-studio-terminal-install.command"
     path_export = ":".join([
         "/opt/homebrew/bin",
@@ -573,6 +593,7 @@ def launch_install_in_terminal(installer, workdir, tier, ssd, hf_token=""):
         (
             f"{shlex.quote(installer)} --tier {shlex.quote(tier)} "
             f"--ssd {shlex.quote(ssd)} --no-gui"
+            + ("".join(f" {shlex.quote(flag)}" for flag in extra_flags))
         ),
         "ec=$?",
         "echo",
@@ -701,7 +722,14 @@ def detail_line_style(line):
         if any(marker in line for marker in GATED_MODEL_MARKERS):
             return (("Helvetica", 11), ACCENT2)
         return (("Helvetica", 11), TEXT_DIM)
-    if line.startswith("HuggingFace") or line.startswith("Install works without"):
+    if (
+        line.startswith("HuggingFace")
+        or line.startswith("Install works without")
+        or line.startswith("  1. Log into")
+        or line.startswith("  2. Settings")
+        or line.startswith("  CyberRealistic")
+        or line.startswith("     → click Agree")
+    ):
         return (("Helvetica", 11), YELLOW)
     if line.startswith("  ") and line.rstrip().endswith(":"):
         return (("Helvetica", 11, "bold"), "white")
@@ -722,14 +750,92 @@ def detail_button_fg(color):
     }.get(color, "white")
 
 
-DETAIL_HEIGHT_RATIO = 0.80  # leave room for SSD + HuggingFace without hiding
-DETAIL_VIEW_HEIGHT_MIN = 128
-DETAIL_VIEW_HEIGHT_MAX = 336
+DETAIL_HEIGHT_RATIO = 0.64  # ~20% shorter detail panel — room for SSD + HuggingFace token block
+DETAIL_VIEW_HEIGHT_MIN = 102
+DETAIL_VIEW_HEIGHT_MAX = 268
 PREFS_PATH = os.path.expanduser("~/.local-ai-studio-installer.json")
-DETAIL_LINE_SLOTS = 24
+DETAIL_LINE_SLOTS = 19
 DETAIL_GAP_SLOTS = 4
 GATED_MODEL_MARKERS = ("SD 3.5 Medium",)
 HF_LICENSE_MODEL_URL = "https://huggingface.co/stabilityai/stable-diffusion-3.5-medium"
+HF_SENSITIVE_SETTINGS_URL = "https://huggingface.co/settings/content-preferences"
+HF_SIGNUP_URL = "https://huggingface.co/join"
+HF_TOKENS_URL = "https://huggingface.co/settings/tokens"
+
+# Optional Unfiltered Pack realism weights (need HF sensitive content + token)
+SENSITIVE_MODEL_FILES = (
+    "spicy-realism-v30-unet.safetensors",
+    "into-realism-v30-unet.safetensors",
+    "intorealism-v21-unet.safetensors",
+)
+
+HF_SENSITIVE_WIZARD_STEPS = (
+    {
+        "title": "When to do this",
+        "body": (
+            "TIMING\n"
+            "──────\n"
+            "• BEFORE INSTALL (now) — best chance to download all 3 on the first pass.\n"
+            "• AFTER INSTALL — still fine; run LOCAL_AI_GEN/scripts/fetch-sensitive-models.sh\n\n"
+            "These 3 photoreal weights are optional. The installer never blocks or fails if they skip.\n\n"
+            "Click Next to walk through the manual browser steps (~2 minutes)."
+        ),
+        "open_label": None,
+        "url": None,
+    },
+    {
+        "title": "Step 1 of 4 — Free account",
+        "body": (
+            "Create a free HuggingFace account if you do not have one.\n\n"
+            "• Email, Google, or GitHub sign-up works\n"
+            "• No credit card\n"
+            "• No API billing — this is only for downloading files\n\n"
+            "Click \"Open page\" → complete sign-up in your browser → come back here → Next."
+        ),
+        "open_label": "Open sign-up page",
+        "url": HF_SIGNUP_URL,
+    },
+    {
+        "title": "Step 2 of 4 — Content preferences",
+        "body": (
+            "While logged into HuggingFace:\n\n"
+            "1. Open Content preferences (button below)\n"
+            "2. Enable viewing sensitive / NSFW content\n"
+            "3. Save if asked\n\n"
+            "Required for the 3 photoreal realism downloads. Free setting on your account."
+        ),
+        "open_label": "Open content preferences",
+        "url": HF_SENSITIVE_SETTINGS_URL,
+    },
+    {
+        "title": "Step 3 of 4 — Read token",
+        "body": (
+            "Still logged in:\n\n"
+            "1. Open Access Tokens (button below)\n"
+            "2. New token → name it anything (e.g. local-ai)\n"
+            "3. Type: Read only (not Write)\n"
+            "4. Create → Copy the token (starts with hf_)\n\n"
+            "Keep the token handy for the next step."
+        ),
+        "open_label": "Open token settings",
+        "url": HF_TOKENS_URL,
+    },
+    {
+        "title": "Step 4 of 4 — Paste in installer",
+        "body": (
+            "Back in this installer window:\n\n"
+            "1. Scroll to the orange HuggingFace box (step 2 on main screen)\n"
+            "2. Click \"Paste Token from Clipboard\" (or Type Token…)\n"
+            "3. Check Unfiltered Pack is still checked\n"
+            "4. Click INSTALL LOCAL AI STUDIO\n\n"
+            "If you install without a token, everything else still works — run\n"
+            "LOCAL_AI_GEN/scripts/fetch-sensitive-models.sh later."
+        ),
+        "open_label": None,
+        "url": None,
+    },
+)
+
 HF_DETAIL_FOOTER = (
     "",
     "HuggingFace (optional) — only SD 3.5 Medium needs extra steps:",
@@ -740,6 +846,18 @@ HF_DETAIL_FOOTER = (
     "Install works without SD 3.5 — 25 of 26 models download with no account.",
 )
 
+HF_MAIN_HINT = (
+    "HuggingFace (optional) — SD 3.5 Medium needs license + Read token.\n"
+    "CyberRealistic is public. For SD 3.5: Agree on stabilityai/stable-diffusion-3.5-medium, then\n"
+    "Settings → Access Tokens → New token (Read) → paste below → INSTALL.\n"
+    "Install works without SD 3.5 — 25 of 26 models need no account."
+)
+
+HF_MAIN_HINT_PACK = (
+    "Unfiltered Pack: use Setup guide for 3 optional realism weights (content prefs + token).\n\n"
+    + HF_MAIN_HINT
+)
+
 
 def open_hf_gated_model_pages():
     """Open the HuggingFace page where SD 3.5 license must be accepted."""
@@ -748,6 +866,38 @@ def open_hf_gated_model_pages():
             subprocess.run(["open", url], check=False, timeout=8)
         except OSError:
             pass
+
+
+def open_hf_url(url):
+    """Open a HuggingFace (or other) page in the default browser."""
+    if not url:
+        return
+    try:
+        subprocess.run(["open", url], check=False, timeout=8)
+    except OSError:
+        pass
+
+
+def open_hf_sensitive_settings():
+    """Open HuggingFace content preferences (sensitive content toggle)."""
+    open_hf_url(HF_SENSITIVE_SETTINGS_URL)
+
+
+def count_missing_sensitive_models(ssd_root):
+    """How many of the 3 optional sensitive weights are absent on SSD (0–3)."""
+    if not ssd_root:
+        return len(SENSITIVE_MODEL_FILES)
+    models_dir = os.path.join(ssd_root, "LOCAL_AI_GEN", "comfyui-models", "diffusion_models")
+    missing = 0
+    for name in SENSITIVE_MODEL_FILES:
+        path = os.path.join(models_dir, name)
+        try:
+            if os.path.isfile(path) and os.path.getsize(path) > 50_000_000:
+                continue
+        except OSError:
+            pass
+        missing += 1
+    return missing
 
 
 def is_usable_ssd_path(path):
@@ -793,14 +943,15 @@ class InstallerGUI(tk.Tk):
         super().__init__()
         self.title("AI Installer")
         self.configure(bg=BG)
-        self.minsize(820, 720)
-        self._detail_view_height = DETAIL_VIEW_HEIGHT_MIN
+        self.minsize(820, 620)
         self._ssd_access_ok = False
-        self.selected_tier = tk.StringVar(value="standard")
+        self.selected_tier = tk.StringVar(value="")
+        self.unfiltered_pack = tk.BooleanVar(value=False)
         self.drive_path = tk.StringVar(value="")
         self.installing = False
         self.proc = None
         self._tier_widgets = {}
+        self._tier_check_vars = {}
 
         self.createcommand("tk::mac::Quit", self._on_quit)
         self.protocol("WM_DELETE_WINDOW", self._on_quit)
@@ -814,8 +965,16 @@ class InstallerGUI(tk.Tk):
         prefs = self._load_prefs()
         if prefs.get("last_tier") in {t["id"] for t in TIERS}:
             self.selected_tier.set(prefs["last_tier"])
+        elif prefs.get("last_tier") == "":
+            self.selected_tier.set("")
+        if prefs.get("unfiltered_pack"):
+            self.unfiltered_pack.set(True)
         self._refresh_volumes()
+        self.after_idle(self._apply_smart_install_defaults)
+        self._sync_tier_checkboxes()
         self._update_tier_highlight()
+        self.after_idle(self._sync_install_controls)
+        self.after_idle(self._sync_hf_hints)
         self._center_window()
         self.after_idle(self._sync_all_scrollbars)
         self.after_idle(self._bring_to_front)
@@ -826,30 +985,7 @@ class InstallerGUI(tk.Tk):
 
     def _sync_all_scrollbars(self):
         self._sync_body_scrollbar()
-        self._sync_detail_scroll()
         self._sync_log_scroll()
-
-    def _sync_detail_scroll(self):
-        total = len(self._detail_lines)
-        max_off = self._detail_max_offset()
-        if total <= 1 or max_off <= 0:
-            self._detail_sb.pack_forget()
-            return
-        needs_scroll = (
-            self._detail_offset > 0
-            or getattr(self, "_detail_visible_end", 0) < total
-        )
-        if needs_scroll:
-            if not self._detail_sb.winfo_ismapped():
-                self._detail_sb.pack(side=tk.RIGHT, fill=tk.Y)
-            span = max(max_off, 1)
-            first = self._detail_offset / span
-            last = min(1.0, self._detail_visible_end / total)
-            if last <= first:
-                last = min(1.0, first + 0.15)
-            self._detail_sb.set(first, last)
-        else:
-            self._detail_sb.pack_forget()
 
     def _sync_log_scroll(self):
         if self.log.size() > 4:
@@ -890,11 +1026,11 @@ class InstallerGUI(tk.Tk):
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
         w = min(980, max(860, sw - 32))
-        h = min(900, max(760, sh - 80))
+        h = min(820, max(680, sh - 100))
         x = max(0, (sw - w) // 2)
         y = max(24, (sh - h) // 2)
         self.geometry(f"{w}x{h}+{x}+{y}")
-        self.minsize(820, 700)
+        self.minsize(820, 640)
 
     def _build_ui(self):
         # ── Header ───────────────────────────────────────────────────────
@@ -908,7 +1044,7 @@ class InstallerGUI(tk.Tk):
         ).pack(pady=(8, 0))
         flat_text(
             header,
-            text="Pick tier + SSD → click INSTALL at the bottom",
+            text="Select package and/or pack → pick SSD → INSTALL at the bottom",
             font=("Helvetica", 10), fg="#ffe8d6", bg=ACCENT,
         ).pack()
 
@@ -917,7 +1053,7 @@ class InstallerGUI(tk.Tk):
         footer.pack(side=tk.BOTTOM, fill=tk.X)
 
         self._install_cta = flat_text(
-            footer, text="Step 3 — click INSTALL when tier + SSD are set:",
+            footer, text="Step 3 — click INSTALL when selections + SSD are set:",
             font=("Helvetica", 10, "bold"), fg=ACCENT2, bg=BG, anchor="w", readonly=True,
         )
         self._install_cta.pack(fill=tk.X, pady=(0, 4))
@@ -994,21 +1130,30 @@ class InstallerGUI(tk.Tk):
         self.log.configure(yscrollcommand=self._log_sb.set)
         self.log.pack(fill=tk.BOTH, expand=True, padx=3, pady=3)
 
-        # ── Body: tiers + expandable details + SSD (footer pinned below) ───
+        # ── Body: tiers + SSD (footer pinned below) ───
         self._body_outer = tk.Frame(self, bg=BG)
         self._body_outer.pack(fill=tk.BOTH, expand=True)
-        self._body_outer.bind("<Configure>", self._layout_detail_viewport)
 
         body = tk.Frame(self._body_outer, bg=BG, padx=16, pady=6)
         body.pack(fill=tk.BOTH, expand=True)
         self._body_frame = body
 
+        # Pin SSD/HF block to the bottom first so upper sections never overlap it.
+        self._drive_section = tk.Frame(
+            body, bg=BG_CARD, highlightbackground=BORDER, highlightthickness=1,
+        )
+        self._drive_section.pack(side=tk.BOTTOM, fill=tk.X)
+
+        self._main_upper = tk.Frame(body, bg=BG)
+        self._main_upper.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
         flat_text(
-            body, text="1. CHOOSE PACKAGE", font=("Helvetica", 12, "bold"),
+            self._main_upper, text="1. CHOOSE PACKAGE (click to select, click again to clear)",
+            font=("Helvetica", 12, "bold"),
             fg=ACCENT2, bg=BG, anchor="w",
         ).pack(fill=tk.X, pady=(0, 4))
 
-        self._cards_frame = tk.Frame(body, bg=BG)
+        self._cards_frame = tk.Frame(self._main_upper, bg=BG)
         self._cards_frame.pack(fill=tk.X)
         self.tier_cards = {}
         for i, tier in enumerate(TIERS):
@@ -1017,90 +1162,60 @@ class InstallerGUI(tk.Tk):
             self._cards_frame.columnconfigure(i % 2, weight=1)
             self.tier_cards[tier["id"]] = card
 
+        self._selected_tier_row = tk.Frame(self._main_upper, bg=BG_CARD, highlightbackground=BORDER, highlightthickness=1)
+        self._selected_tier_row.pack(fill=tk.X, pady=(6, 0))
+        sel_inner = tk.Frame(self._selected_tier_row, bg=BG_CARD, padx=10, pady=8)
+        sel_inner.pack(fill=tk.X)
+        self._selected_tier_summary = flat_text(
+            sel_inner, text="", font=("Helvetica", 10),
+            fg=TEXT, bg=BG_CARD, anchor="w", readonly=True, wraplength=720,
+        )
+        self._selected_tier_summary.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._extras_section = tk.Frame(self._main_upper, bg=BG)
+        self._extras_section.pack(fill=tk.X, pady=(8, 0))
+
+        self._pack_frame = tk.Frame(
+            self._extras_section, bg=BG_CARD, highlightbackground=BORDER, highlightthickness=1,
+        )
+        self._pack_frame.pack(fill=tk.X)
+        full_inner = tk.Frame(self._pack_frame, bg=BG_CARD, padx=10, pady=8)
+        full_inner.pack(fill=tk.X)
         flat_text(
-            body, text="WHAT'S INCLUDED (selected package)", font=("Helvetica", 11, "bold"),
-            fg=ACCENT2, bg=BG, anchor="w",
-        ).pack(fill=tk.X, pady=(8, 2))
-
-        self._detail_frame = tk.Frame(
-            body, bg=BG_CARD, highlightbackground=BORDER, highlightthickness=1,
+            full_inner, text="2. UNFILTERED MODELS PACK (optional)", font=("Helvetica", 11, "bold"),
+            fg=ACCENT2, bg=BG_CARD, anchor="w",
+        ).pack(fill=tk.X, pady=(0, 4))
+        self._unfiltered_pack_cb = tk.Checkbutton(
+            full_inner,
+            text=f"Unfiltered Models Pack (+~{UNFILTERED_PACK_GB} GB)",
+            variable=self.unfiltered_pack,
+            font=("Helvetica", 10, "bold"),
+            fg=TEXT,
+            bg=BG_CARD,
+            activebackground=BG_CARD,
+            activeforeground=ACCENT2,
+            selectcolor=BG_SEL,
+            anchor="w",
+            command=self._on_unfiltered_pack_toggle,
         )
-        self._detail_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 6))
-        detail_inner = tk.Frame(self._detail_frame, bg=BG_CARD, padx=10, pady=6)
-        detail_inner.pack(fill=tk.BOTH, expand=True)
-
-        detail_header = tk.Frame(detail_inner, bg=BG_CARD)
-        detail_header.pack(fill=tk.X)
-        self.detail_title = flat_text(
-            detail_header, text="", font=("Helvetica", 11, "bold"),
-            fg=ACCENT2, bg=BG_CARD, anchor="w", readonly=True,
-        )
-        self.detail_title.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self._detail_collapsed = False
-        self._detail_toggle_btn = tk.Button(
-            detail_header, text="Hide", font=("Helvetica", 9),
-            fg=TEXT_DIM, bg=BG_CARD, activebackground=BG_SEL,
-            relief=tk.FLAT, cursor="hand2", command=self._toggle_detail_panel,
-        )
-        self._detail_toggle_btn.pack(side=tk.RIGHT)
-
-        self._detail_lines = []
-        self._detail_offset = 0
-        self._detail_visible_end = 0
-        self._detail_wrap = 760
-        self._detail_wheel_active = False
-        self._detail_line_slots = []
-        self._detail_gap_slots = []
-
-        detail_scroll = tk.Frame(detail_inner, bg=BG_CARD)
-        self._detail_scroll_frame = detail_scroll
-        detail_scroll.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
-
-        self._detail_viewport = tk.Frame(
-            detail_scroll, bg=BG_CARD, height=self._detail_view_height,
-        )
-        self._detail_viewport.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self._detail_viewport.pack_propagate(False)
-
-        self._detail_content = tk.Frame(self._detail_viewport, bg=BG_CARD)
-        self._detail_content.pack(fill=tk.BOTH, expand=True)
-        self._init_detail_slots()
-
-        self._detail_sb = ttk.Scrollbar(detail_scroll, command=self._detail_sb_scroll)
-
-        def _detail_viewport_resize(event):
-            if event.width < 100:
-                return
-            wrap = max(event.width - 24, 200)
-            if abs(wrap - self._detail_wrap) > 12:
-                self._detail_wrap = wrap
-                for slot in self._detail_line_slots:
-                    slot.configure(wraplength=wrap)
-                self.after_idle(self._render_detail_lines)
-
-        self._detail_viewport.bind("<Configure>", _detail_viewport_resize)
-
-        self._detail_region_root = self._detail_frame
-        for widget in (
-            self._detail_frame, detail_inner, detail_scroll,
-            self._detail_viewport, self._detail_content, self.detail_title,
-        ):
-            widget.bind("<Enter>", self._detail_wheel_enter)
-            widget.bind("<Leave>", self._detail_wheel_leave)
-        self.bind_all("<MouseWheel>", self._detail_wheel_handler, add="+")
-        self.bind_all("<Button-4>", self._detail_wheel_up, add="+")
-        self.bind_all("<Button-5>", self._detail_wheel_down, add="+")
-
-        self._drive_section = tk.Frame(
-            body, bg=BG_CARD, highlightbackground=BORDER, highlightthickness=1,
-        )
-        self._drive_section.pack(fill=tk.X, side=tk.BOTTOM)
+        self._unfiltered_pack_cb.pack(fill=tk.X)
+        flat_text(
+            full_inner,
+            text="Qwen Image Edit, Flux Fill/Kontext, faces, poses, MLX vision · ~3–6 extra hours",
+            font=("Helvetica", 9), fg=TEXT_DIM, bg=BG_CARD, anchor="w", readonly=True,
+            wraplength=720,
+        ).pack(fill=tk.X, pady=(2, 0))
+        flat_text(
+            full_inner,
+            text="3 optional realism weights need HuggingFace setup — use guide in step 4.",
+            font=("Helvetica", 9), fg=TEXT_DIM, bg=BG_CARD, anchor="w", readonly=True,
+            wraplength=720,
+        ).pack(fill=tk.X, pady=(6, 0))
 
         inner = tk.Frame(self._drive_section, bg=BG_CARD, padx=10, pady=8)
         inner.pack(fill=tk.X)
 
         flat_text(
-            inner, text="2. EXTERNAL SSD + HUGGINGFACE (optional)", font=("Helvetica", 11, "bold"),
+            inner, text="3. EXTERNAL SSD + HUGGINGFACE (optional)", font=("Helvetica", 11, "bold"),
             fg=ACCENT2, bg=BG_CARD, anchor="w",
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 4))
 
@@ -1175,10 +1290,23 @@ class InstallerGUI(tk.Tk):
 
         hf_header = tk.Frame(inner, bg=BG_CARD)
         hf_header.grid(row=5, column=0, columnspan=3, sticky="ew")
-        flat_text(
-            hf_header, text="HuggingFace token (optional — SD 3.5 Medium only)",
+        self._hf_header_label = flat_text(
+            hf_header, text="HuggingFace token (optional)",
             font=("Helvetica", 10, "bold"), fg=TEXT, bg=BG_CARD, anchor="w", readonly=True,
-        ).pack(side=tk.LEFT)
+        )
+        self._hf_header_label.pack(side=tk.LEFT)
+        tk.Button(
+            hf_header, text="Setup guide", font=("Helvetica", 9, "bold"),
+            fg="white", bg="#8957e5", activebackground="#a371f7",
+            relief=tk.FLAT, padx=6, pady=1, cursor="hand2",
+            command=self._show_hf_sensitive_wizard,
+        ).pack(side=tk.RIGHT, padx=(4, 0))
+        tk.Button(
+            hf_header, text="Content prefs", font=("Helvetica", 9, "bold"),
+            fg="white", bg="#8957e5", activebackground="#a371f7",
+            relief=tk.FLAT, padx=6, pady=1, cursor="hand2",
+            command=self._open_hf_sensitive_settings,
+        ).pack(side=tk.RIGHT, padx=(4, 0))
         tk.Button(
             hf_header, text="SD 3.5 license", font=("Helvetica", 9, "bold"),
             fg="white", bg="#8957e5", activebackground="#a371f7",
@@ -1195,9 +1323,14 @@ class InstallerGUI(tk.Tk):
         self._hf_token = ""
         self._hf_license_hint = flat_text(
             inner,
-            text="SD 3.5 only: log into HuggingFace and click Agree on the Stability model page (SD 3.5 license). CyberRealistic is public.",
-            font=("Helvetica", 9), fg="#ffe8d6", bg=BG_CARD, anchor="w", readonly=True,
+            text=HF_MAIN_HINT,
+            font=("Helvetica", 9),
+            fg="#ffe8d6",
+            bg=BG_CARD,
+            anchor="w",
+            readonly=True,
             wraplength=self._ssd_status_wrap,
+            justify=tk.LEFT,
         )
         self._hf_license_hint.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(4, 0))
 
@@ -1237,7 +1370,8 @@ class InstallerGUI(tk.Tk):
         )
         self._hf_status.pack(fill=tk.X, pady=(2, 0))
 
-        self.after_idle(self._layout_detail_viewport)
+        self._update_hf_main_hint()
+        self._update_selected_tier_summary()
         self.after_idle(self._sync_ssd_status_wrap)
 
     def _hf_mask_token(self, token):
@@ -1260,20 +1394,181 @@ class InstallerGUI(tk.Tk):
         self._hf_token = token
         self._hf_update_status()
 
+    def _sync_tier_checkboxes(self):
+        selected = self.selected_tier.get()
+        for tid, var in self._tier_check_vars.items():
+            var.set(tid == selected)
+
+    def _on_tier_checkbox(self, tier_id):
+        var = self._tier_check_vars.get(tier_id)
+        if var is None:
+            return
+        if var.get():
+            self.selected_tier.set(tier_id)
+            for tid, other in self._tier_check_vars.items():
+                if tid != tier_id:
+                    other.set(False)
+        elif self.selected_tier.get() == tier_id:
+            self.selected_tier.set("")
+        self._update_tier_highlight()
+        self._update_warnings()
+
+    def _tier_selected(self):
+        return self.selected_tier.get() in {t["id"] for t in TIERS}
+
+    def _tier_for_install(self):
+        tid = self.selected_tier.get()
+        if tid in {t["id"] for t in TIERS}:
+            return tid
+        return "standard"
+
+    def _install_targets(self):
+        return self._tier_selected(), self.unfiltered_pack.get()
+
+    def _effective_models_only(self, ssd=None):
+        """Pack-only downloads skip apps; a selected package always runs the full install path."""
+        tier_on, pack_on = self._install_targets()
+        return bool(pack_on and not tier_on)
+
+    def _install_button_label(self):
+        tier_on, pack_on = self._install_targets()
+        if tier_on:
+            return "INSTALL LOCAL AI STUDIO"
+        if pack_on:
+            return "DOWNLOAD MODELS ONLY"
+        return "INSTALL LOCAL AI STUDIO"
+
+    def _build_install_flags(self, ssd=None):
+        tier_on, pack_on = self._install_targets()
+        if not tier_on and not pack_on:
+            return []
+        if not tier_on and pack_on:
+            return ["--unfiltered-pack-only"]
+        flags = []
+        if pack_on:
+            flags.append("--unfiltered-pack")
+        return flags
+
+    def _install_mode_label(self):
+        tier_on, pack_on = self._install_targets()
+        if tier_on and pack_on:
+            return "Full studio + Unfiltered Pack"
+        if tier_on:
+            return "Full studio package"
+        if pack_on:
+            return "Unfiltered Pack models only"
+        return "Nothing selected"
+
+    def _selected_target_gb(self, tier=None):
+        tier = tier or self._tier_for_install()
+        total = 0
+        tier_on, pack_on = self._install_targets()
+        if tier_on:
+            total += TIER_SSD_GB.get(tier, 110)
+        if pack_on:
+            total += UNFILTERED_PACK_GB
+        return total
+
+    def _install_time_estimate(self):
+        tier = self._tier_for_install()
+        tier_on, pack_on = self._install_targets()
+        if tier_on and pack_on:
+            return f"{TIER_TIME_EST.get(tier, '2–4 hours')} + {MODELS_ONLY_PACK_TIME} (pack)"
+        if pack_on:
+            return MODELS_ONLY_PACK_TIME
+        if tier_on:
+            return TIER_TIME_EST.get(tier, "2–4 hours")
+        return "2–4 hours"
+
+    def _install_target_label(self):
+        tier_on, pack_on = self._install_targets()
+        parts = []
+        if tier_on:
+            parts.append(self.selected_tier.get().upper())
+        if pack_on:
+            parts.append("Unfiltered Pack")
+        return " + ".join(parts) if parts else "nothing selected"
+
+    def _apply_smart_install_defaults(self):
+        prefs = self._load_prefs()
+        if prefs.get("last_tier") is not None or prefs.get("unfiltered_pack"):
+            return
+        ssd = self.drive_path.get().strip()
+        if ssd and studio_ready_on_ssd(ssd):
+            self.selected_tier.set("")
+            self.unfiltered_pack.set(True)
+            self._update_tier_highlight()
+
+    def _on_unfiltered_pack_toggle(self):
+        path = self.drive_path.get().strip()
+        if path:
+            try:
+                st = os.statvfs(path)
+                free = (st.f_frsize * st.f_bavail) // (1024 ** 3)
+            except OSError:
+                free = self._free_gb.get(self.drive_combo.get(), 0)
+            self._update_space_label(path, free)
+        self._update_warnings()
+        self._sync_hf_hints()
+        self._sync_install_controls()
+        if self.unfiltered_pack.get() and not self._hf_token_value():
+            prefs = self._load_prefs()
+            if not prefs.get("saw_hf_sensitive_setup_intro"):
+                self._save_prefs(saw_hf_sensitive_setup_intro=True)
+                if messagebox.askyesno(
+                    "Unfiltered Pack — HuggingFace help",
+                    "This pack includes 3 optional photoreal weights on HuggingFace.\n\n"
+                    "WHEN: Do the short setup before INSTALL for the best chance "
+                    "to get all 3 on the first pass.\n\n"
+                    "Open the step-by-step guide now? (~2 min, manual browser steps)\n\n"
+                    "Install still works if you skip — you can run the guide later.",
+                ):
+                    self.after(150, self._show_hf_sensitive_wizard)
+
+    def _update_hf_main_hint(self):
+        if not hasattr(self, "_hf_license_hint"):
+            return
+        text = HF_MAIN_HINT_PACK if self.unfiltered_pack.get() else HF_MAIN_HINT
+        self._hf_license_hint.configure(text=text)
+
+    def _sync_hf_hints(self):
+        pack = self.unfiltered_pack.get()
+        if pack:
+            self._hf_header_label.configure(
+                text="HuggingFace — paste token below before INSTALL (optional realism weights + SD 3.5)",
+            )
+            if hasattr(self, "_hf_setup_guide_btn"):
+                self._hf_setup_guide_btn.configure(bg="#8957e5")
+        else:
+            self._hf_header_label.configure(
+                text="HuggingFace token (optional — SD 3.5 Medium)",
+            )
+            if hasattr(self, "_hf_setup_guide_btn"):
+                self._hf_setup_guide_btn.configure(bg="#6e7681")
+        self._update_hf_main_hint()
+        self._hf_update_status()
+
     def _hf_update_status(self):
+        pack = self.unfiltered_pack.get()
         if self._hf_token:
+            extra = (
+                "sensitive realism trio + SD 3.5 will be attempted"
+                if pack
+                else "if SD 3.5 skips, click License pages and Agree while logged in"
+            )
             self._hf_status.configure(
-                text=(
-                    f"✓ Token: {self._hf_mask_token(self._hf_token)} — "
-                    "if SD 3.5 skips, click License pages and Agree while logged in"
-                ),
+                text=f"✓ Token: {self._hf_mask_token(self._hf_token)} — {extra}",
                 fg="white", disabledforeground="white",
             )
         else:
-            self._hf_status.configure(
-                text="No token — optional. SD 3.5 needs website license accept + token.",
-                fg="#ffe8d6", disabledforeground="#ffe8d6",
-            )
+            if pack:
+                msg = (
+                    "No token — install still completes. "
+                    "Sensitive trio may skip; retry with scripts/fetch-sensitive-models.sh"
+                )
+            else:
+                msg = "No token — optional. SD 3.5 needs website license accept + token."
+            self._hf_status.configure(text=msg, fg="#ffe8d6", disabledforeground="#ffe8d6")
 
     def _hf_paste_clipboard(self):
         try:
@@ -1311,46 +1606,8 @@ class InstallerGUI(tk.Tk):
     def _hf_token_value(self):
         return (self._hf_token or "").strip()
 
-    def _toggle_detail_panel(self):
-        self._detail_collapsed = not self._detail_collapsed
-        self._apply_detail_collapsed()
-
-    def _apply_detail_collapsed(self):
-        if self._detail_collapsed:
-            self._detail_scroll_frame.pack_forget()
-            self._detail_frame.pack_configure(expand=False)
-            self._detail_toggle_btn.configure(text="Show details")
-        else:
-            self._detail_scroll_frame.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
-            self._detail_frame.pack_configure(expand=True)
-            self._detail_toggle_btn.configure(text="Hide")
-            self.after_idle(self._layout_detail_viewport)
-
-    def _layout_detail_viewport(self, event=None):
-        """Stretch the package-detail panel to use space between tiers and SSD."""
-        if not hasattr(self, "_body_outer") or not hasattr(self, "_detail_viewport"):
-            return
-        if self._detail_collapsed:
-            return
-        try:
-            self.update_idletasks()
-            outer_h = self._body_outer.winfo_height()
-            if outer_h < 200:
-                return
-            cards_h = self._cards_frame.winfo_height()
-            drive_h = self._drive_section.winfo_height()
-            fixed = cards_h + drive_h + 100
-            avail = int((outer_h - fixed) * DETAIL_HEIGHT_RATIO)
-            h = max(DETAIL_VIEW_HEIGHT_MIN, min(DETAIL_VIEW_HEIGHT_MAX, avail))
-            if abs(h - self._detail_view_height) >= 6 or event is None:
-                self._detail_view_height = h
-                self._detail_viewport.configure(height=h)
-                self._render_detail_lines()
-        except tk.TclError:
-            pass
-
     def _sync_body_scrollbar(self):
-        self._layout_detail_viewport()
+        pass
 
     def _sync_footer_progress_wrap(self, event=None):
         if not hasattr(self, "_progress_stack"):
@@ -1369,12 +1626,6 @@ class InstallerGUI(tk.Tk):
                 widget.configure(wraplength=wrap)
         except tk.TclError:
             pass
-
-    def _collapse_detail_for_install(self):
-        if getattr(self, "_detail_collapsed", False):
-            return
-        self._detail_collapsed = True
-        self._apply_detail_collapsed()
 
     def _show_install_log(self):
         if not self.log_frame.winfo_ismapped():
@@ -1438,6 +1689,7 @@ class InstallerGUI(tk.Tk):
         self._update_space_label(path, free_gb)
         self._update_warnings()
         self._check_ssd_access_silent()
+        self._sync_install_controls()
         if remember:
             self._save_prefs(last_ssd=path)
         return True
@@ -1467,27 +1719,52 @@ class InstallerGUI(tk.Tk):
         card.pack(fill=tk.BOTH, expand=True)
 
         def select(_=None):
-            self.selected_tier.set(tier["id"])
+            if self.selected_tier.get() == tier["id"]:
+                self.selected_tier.set("")
+            else:
+                self.selected_tier.set(tier["id"])
+            self._sync_tier_checkboxes()
             self._update_tier_highlight()
             self._update_warnings()
+
+        def show_details(_=None):
+            self._show_tier_detail_window(tier["id"])
 
         card.bind("<Button-1>", select)
 
         top = tk.Frame(card, bg=card_bg)
         top.pack(fill=tk.X, padx=10, pady=(8, 0))
 
-        rb = tk.Radiobutton(
-            top, variable=self.selected_tier, value=tier["id"],
-            bg=card_bg, activebackground=card_bg,
-            selectcolor=ACCENT, command=self._update_tier_highlight,
+        check_var = tk.BooleanVar(value=self.selected_tier.get() == tier["id"])
+        self._tier_check_vars[tier["id"]] = check_var
+        tier_cb = tk.Checkbutton(
+            top,
+            text="Select",
+            variable=check_var,
+            font=("Helvetica", 9, "bold"),
+            fg=ACCENT2,
+            bg=card_bg,
+            activebackground=card_bg,
+            activeforeground=ACCENT2,
+            selectcolor=BG_SEL,
+            anchor="w",
+            command=lambda tid=tier["id"]: self._on_tier_checkbox(tid),
         )
-        rb.pack(side=tk.LEFT)
+        tier_cb.pack(side=tk.LEFT, padx=(0, 6))
 
         name_btn = flat_text(
             top, text=f"{tier['emoji']}  {tier['name']}", font=("Helvetica", 13, "bold"),
             fg=TEXT, bg=card_bg, command=select,
         )
-        name_btn.pack(side=tk.LEFT, padx=(4, 0), fill=tk.X, expand=True)
+        name_btn.pack(side=tk.LEFT, padx=(0, 4), fill=tk.X, expand=True)
+
+        details_btn = tk.Button(
+            top, text="Details", font=("Helvetica", 8, "bold"),
+            fg="white", bg="#1f6feb", activeforeground="white",
+            activebackground="#388bfd", relief=tk.FLAT, padx=6, pady=2,
+            cursor="hand2", command=show_details,
+        )
+        details_btn.pack(side=tk.RIGHT, padx=(4, 0))
 
         badge_btn = None
         if tier["badge"]:
@@ -1502,14 +1779,19 @@ class InstallerGUI(tk.Tk):
             card, text=f"{tier['size']}  ·  {tier['internal']}",
             font=("Helvetica", 10, "bold"), fg=ACCENT, bg=card_bg, anchor="w", command=select,
         )
-        size_btn.pack(fill=tk.X, padx=10, pady=(2, 8))
+        size_btn.pack(fill=tk.X, padx=10, pady=(2, 0))
+        flat_text(
+            card, text=tier["tagline"],
+            font=("Helvetica", 9), fg=TEXT_DIM, bg=card_bg, anchor="w",
+            command=select, wraplength=340,
+        ).pack(fill=tk.X, padx=10, pady=(2, 8))
 
         self._tier_widgets[tier["id"]] = {
-            "card": card, "top": top, "rb": rb,
+            "card": card, "top": top, "check": tier_cb, "details": details_btn,
             "name": name_btn, "size": size_btn, "badge": badge_btn,
         }
 
-        for w in (card, top, rb, name_btn, size_btn):
+        for w in (card, top, name_btn, size_btn):
             w.bind("<Button-1>", select)
         if badge_btn:
             badge_btn.bind("<Button-1>", select)
@@ -1523,7 +1805,7 @@ class InstallerGUI(tk.Tk):
                 widget.configure(activebackground=bg)
             elif isinstance(widget, tk.Text):
                 widget.configure(bg=bg)
-            elif isinstance(widget, tk.Radiobutton):
+            elif isinstance(widget, (tk.Radiobutton, tk.Checkbutton)):
                 widget.configure(activebackground=bg)
         except tk.TclError:
             pass
@@ -1539,178 +1821,106 @@ class InstallerGUI(tk.Tk):
                 highlightthickness=3 if selected else 1,
             )
             self._set_widget_bg(widgets["top"], bg)
-            self._set_widget_bg(widgets["rb"], bg)
+            self._set_widget_bg(widgets["check"], bg)
             self._set_widget_bg(widgets["name"], bg)
             self._set_widget_bg(widgets["size"], bg)
             if widgets.get("badge"):
                 pass
-        self._update_tier_detail()
+        self._sync_tier_checkboxes()
+        self._update_selected_tier_summary()
         self._update_warnings()
+        self._sync_install_controls()
 
-    def _init_detail_slots(self):
-        """Pre-create detail widgets once — reconfigure on scroll instead of destroy/recreate."""
-        for _ in range(DETAIL_LINE_SLOTS):
-            slot = flat_text(
-                self._detail_content, text=" ", font=("Helvetica", 11),
-                fg="white", bg=BG_CARD, anchor="w",
-                wraplength=self._detail_wrap, readonly=True,
-            )
-            slot.pack_forget()
-            self._detail_line_slots.append(slot)
-        for _ in range(DETAIL_GAP_SLOTS):
-            gap = tk.Frame(self._detail_content, bg=BG_CARD, height=6)
-            gap.pack_propagate(False)
-            gap.pack_forget()
-            self._detail_gap_slots.append(gap)
+    def _tier_body_lines(self, tier):
+        """Tier-specific lines only (HF token block is pinned below the scroll area)."""
+        return [tier["summary"], "", *tier["detail"].split("\n")]
 
-    def _detail_pointer_inside(self):
-        try:
-            x, y = self.winfo_pointerxy()
-            widget = self.winfo_containing(x, y)
-        except tk.TclError:
-            return False
-        while widget is not None:
-            if widget == self._detail_region_root:
-                return True
-            widget = widget.master
-        return False
-
-    def _detail_wheel_enter(self, _=None):
-        self._detail_wheel_active = True
-
-    def _detail_wheel_leave(self, _=None):
-        self.after_idle(self._detail_wheel_check_leave)
-
-    def _detail_wheel_check_leave(self):
-        if not self._detail_pointer_inside():
-            self._detail_wheel_active = False
-
-    def _detail_wheel_step(self, delta):
-        if not self._detail_wheel_active or not delta:
-            return
-        if sys.platform == "darwin":
-            step = -1 if delta > 0 else 1
-        else:
-            step = int(-1 * (delta / 120)) or (-1 if delta > 0 else 1)
-        step = max(-3, min(3, step))
-        self._detail_scroll_by(step)
-
-    def _detail_wheel_handler(self, event):
-        self._detail_wheel_step(getattr(event, "delta", 0))
-        return "break" if self._detail_wheel_active else None
-
-    def _detail_wheel_up(self, _=None):
-        if self._detail_wheel_active:
-            self._detail_scroll_by(-2)
-        return "break" if self._detail_wheel_active else None
-
-    def _detail_wheel_down(self, _=None):
-        if self._detail_wheel_active:
-            self._detail_scroll_by(2)
-        return "break" if self._detail_wheel_active else None
-
-    def _detail_max_offset(self):
-        total = len(self._detail_lines)
-        if total <= 1:
-            return 0
-        for start in range(total - 1, -1, -1):
-            used = 0
-            for i in range(start, total):
-                line = self._detail_lines[i]
-                used += 6 if not line.strip() else 18
-                if used >= self._detail_view_height - 2:
-                    return start
-        return 0
-
-    def _detail_sb_scroll(self, *args):
-        total = len(self._detail_lines)
-        if total <= 1:
-            return
-        max_off = self._detail_max_offset()
-        if args[0] == "moveto":
-            frac = float(args[1])
-            self._detail_offset = int(frac * max(0, max_off))
-        elif args[0] == "scroll":
-            step = int(args[1])
-            if args[2] == "pages":
-                step *= 4
-            self._detail_offset = max(0, min(max_off, self._detail_offset + step))
-        self._render_detail_lines()
-
-    def _detail_scroll_by(self, step):
-        total = len(self._detail_lines)
-        if total <= 1:
-            return
-        max_off = self._detail_max_offset()
-        self._detail_offset = max(0, min(max_off, self._detail_offset + step))
-        self._render_detail_lines()
-
-    def _render_detail_lines(self):
-        for slot in self._detail_line_slots:
-            slot.pack_forget()
-        for gap in self._detail_gap_slots:
-            gap.pack_forget()
-
-        if not self._detail_lines:
-            self._detail_visible_end = 0
-            self._sync_detail_scroll()
-            return
-
-        used = 0
-        rendered = 0
-        line_i = 0
-        gap_i = 0
-        start = self._detail_offset
-        for i in range(start, len(self._detail_lines)):
-            line = self._detail_lines[i]
+    def _render_guide_lines(self, parent, lines, wraplength=560, bg=BG_CARD):
+        for line in lines:
             if not line.strip():
-                if gap_i >= len(self._detail_gap_slots):
-                    break
-                self._detail_gap_slots[gap_i].pack(fill=tk.X)
-                gap_i += 1
-                used += 6
-            else:
-                if line_i >= len(self._detail_line_slots):
-                    break
-                style = detail_line_style(line)
-                font = ("Helvetica", 11)
-                fg = "white"
-                if style:
-                    font, color = style
-                    fg = detail_button_fg(color)
-                slot = self._detail_line_slots[line_i]
-                slot.configure(
-                    text=line, font=font, fg=fg,
-                    activeforeground=fg, disabledforeground=fg,
-                    wraplength=self._detail_wrap,
-                )
-                slot.pack(fill=tk.X, anchor="w")
-                line_i += 1
-                self._detail_content.update_idletasks()
-                used += slot.winfo_height()
+                gap = tk.Frame(parent, bg=bg, height=8)
+                gap.pack(fill=tk.X)
+                gap.pack_propagate(False)
+                continue
+            style = detail_line_style(line)
+            font = ("Helvetica", 11)
+            fg = "white"
+            if style:
+                font, color = style
+                fg = detail_button_fg(color)
+            flat_text(
+                parent,
+                text=line,
+                font=font,
+                fg=fg,
+                bg=bg,
+                anchor="w",
+                readonly=True,
+                wraplength=wraplength,
+            ).pack(fill=tk.X, anchor="w")
+        parent.update_idletasks()
 
-            rendered += 1
-            if used >= self._detail_view_height - 2 and rendered > 1:
-                break
+    def _render_tier_guide_body(self, parent, tier, wraplength=560):
+        self._render_guide_lines(parent, self._tier_body_lines(tier), wraplength=wraplength)
 
-        self._detail_visible_end = start + rendered
-        self._sync_detail_scroll()
-
-    def _update_tier_detail(self):
+    def _update_selected_tier_summary(self):
+        if not hasattr(self, "_selected_tier_summary"):
+            return
+        if not self._tier_selected():
+            self._selected_tier_summary.configure(
+                text="No package selected — OK if you only want the Unfiltered Pack below.",
+            )
+            return
         tid = self.selected_tier.get()
         tier = next((t for t in TIERS if t["id"] == tid), TIERS[1])
-        self.detail_title.configure(
-            text=f"{tier['emoji']}  {tier['name']}  —  {tier['tagline']}",
-            fg=ACCENT2, disabledforeground=ACCENT2,
+        badge = f"  ·  {tier['badge']}" if tier.get("badge") else ""
+        text = (
+            f"Selected: {tier['emoji']} {tier['name']}{badge} — "
+            f"{tier['tagline']}  ·  {tier['size']}"
         )
-        lines = [tier["summary"], "", *tier["detail"].split("\n")]
-        if not any("HuggingFace" in line for line in lines):
-            lines.extend(HF_DETAIL_FOOTER)
-        self._detail_lines = lines
-        self._detail_offset = 0
-        self._detail_wrap = max(self._detail_viewport.winfo_width() - 24, 400)
-        self._render_detail_lines()
-        self.after_idle(self._layout_detail_viewport)
+        self._selected_tier_summary.configure(text=text)
+
+    def _show_tier_detail_window(self, tier_id):
+        tier = next((t for t in TIERS if t["id"] == tier_id), TIERS[0])
+        win = tk.Toplevel(self)
+        win.title(f"{tier['name']} — package details")
+        win.configure(bg=BG_CARD)
+        win.transient(self)
+        win.resizable(True, True)
+        win.minsize(620, 480)
+
+        header = flat_text(
+            win,
+            text=f"{tier['emoji']} {tier['name']} — {tier['tagline']}",
+            font=("Helvetica", 13, "bold"),
+            fg="#4ecdc4",
+            bg=BG_CARD,
+            anchor="w",
+            readonly=True,
+            wraplength=560,
+        )
+        header.pack(fill=tk.X, padx=16, pady=(14, 8))
+
+        body = tk.Frame(win, bg=BG_CARD)
+        body.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
+        lines = self._tier_body_lines(tier) + list(HF_DETAIL_FOOTER)
+        self._render_guide_lines(body, lines, wraplength=560, bg=BG_CARD)
+
+        nav = tk.Frame(win, bg=BG_CARD)
+        nav.pack(fill=tk.X, padx=16, pady=(4, 14))
+        tk.Button(
+            nav, text="Close", font=("Helvetica", 10, "bold"),
+            fg="white", bg="#6e7681", activebackground="#484f58",
+            relief=tk.FLAT, padx=12, pady=6, cursor="hand2",
+            command=win.destroy,
+        ).pack(side=tk.RIGHT)
+
+        win.update_idletasks()
+        w = max(660, win.winfo_reqwidth())
+        h = min(820, max(520, win.winfo_reqheight()))
+        x = self.winfo_rootx() + max(0, (self.winfo_width() - w) // 2)
+        y = self.winfo_rooty() + max(0, (self.winfo_height() - h) // 2)
+        win.geometry(f"{w}x{h}+{x}+{y}")
 
     def _volume_map(self):
         return {label: (path, free) for label, path, free in list_volumes()}
@@ -1748,22 +1958,58 @@ class InstallerGUI(tk.Tk):
                 fg=YELLOW, disabledforeground=YELLOW,
             )
 
+    def _tier_drive_need_gb(self, tier=None):
+        """Free space to recommend — driven only by what is checked (package and/or pack)."""
+        tier_on, pack_on = self._install_targets()
+        if not tier_on and not pack_on:
+            return 0
+        need = 0
+        if tier_on:
+            tid = self.selected_tier.get()
+            need = TIER_DRIVE_MIN_GB.get(tid, TIER_DRIVE_MIN_GB["standard"])
+        if pack_on:
+            need += UNFILTERED_PACK_DRIVE_GB
+            if not tier_on:
+                need += MODELS_ONLY_DRIVE_BUFFER
+        return need
+
+    def _ssd_target_gb(self, tier=None):
+        tier = tier or self._tier_for_install()
+        return self._selected_target_gb(tier)
+
     def _on_drive_selected(self, _=None):
         sel = self.drive_combo.get()
         if sel in self._paths:
             path = self._paths[sel]
             self.drive_path.set(path)
             self._update_space_label(path, self._free_gb.get(sel, 0))
+            self._update_warnings()
             self._save_prefs(last_ssd=path)
             self._check_ssd_access_silent()
+            self._sync_install_controls()
 
     def _update_space_label(self, path, free_gb):
-        tier = self.selected_tier.get()
-        need = {"starter": 100, "standard": 180, "pro": 230, "ultimate": 320}.get(tier, 230)
+        tier_on, pack_on = self._install_targets()
+        need = self._tier_drive_need_gb()
         dest = os.path.join(path, "LOCAL_AI_GEN")
+        target = self._install_target_label()
+        if not tier_on and not pack_on:
+            self.space_label.configure(
+                text=(
+                    f"Install: {dest}\n"
+                    f"{free_gb} GB free  ·  select a package and/or Unfiltered Pack above"
+                ),
+                fg=TEXT_DIM, disabledforeground=TEXT_DIM,
+            )
+            return
         color = GREEN if free_gb >= need else RED
+        content_gb = self._selected_target_gb()
         self.space_label.configure(
-            text=f"Install: {dest}\n{free_gb} GB free on this drive",
+            text=(
+                f"Install: {dest}\n"
+                f"{free_gb} GB free  ·  need ~{need} GB free for {target} "
+                f"(~{content_gb} GB download)"
+            ),
             fg=color, disabledforeground=color,
         )
         self.after_idle(self._sync_ssd_status_wrap)
@@ -1772,7 +2018,7 @@ class InstallerGUI(tk.Tk):
         tier = self.selected_tier.get()
         path = self.drive_path.get()
         msgs = []
-        if tier == "ultimate":
+        if self._tier_selected() and tier == "ultimate":
             msgs.append("16GB RAM: close other apps and run one heavy model at a time.")
         if path:
             free = 0
@@ -1781,9 +2027,15 @@ class InstallerGUI(tk.Tk):
                 free = (st.f_frsize * st.f_bavail) // (1024 ** 3)
             except OSError:
                 pass
-            need = {"starter": 100, "standard": 180, "pro": 230, "ultimate": 320}.get(tier, 230)
+            need = self._tier_drive_need_gb()
             if free < need:
-                msgs.append(f"Drive may be too small — need ~{need} GB free for {tier.upper()}.")
+                msgs.append(
+                    f"Drive may be too small — need ~{need} GB free for {self._install_target_label()}."
+                )
+            if self.unfiltered_pack.get():
+                msgs.append(
+                    f"Unfiltered Pack adds ~{UNFILTERED_PACK_GB} GB (Qwen Edit, Flux Fill/Kontext, MLX)."
+                )
             self._update_space_label(path, free)
         warn = "\n".join(msgs)
         if warn.strip():
@@ -1794,7 +2046,6 @@ class InstallerGUI(tk.Tk):
                 self.warning_label.pack(fill=tk.X, anchor="w")
         else:
             self.warning_label.pack_forget()
-        self.after_idle(self._layout_detail_viewport)
 
     def _browse_drive(self):
         saved = (self._load_prefs().get("last_ssd") or "").strip()
@@ -1880,8 +2131,8 @@ class InstallerGUI(tk.Tk):
                 for key, pct, label in INSTALL_PHASES:
                     if key.lower() in header.lower():
                         self._install_phase = label
-                        # Only bump bar for early setup — downloads use live SSD size
-                        if pct <= 20:
+                        # Setup steps (through ComfyUI) — phase % until models download
+                        if pct <= 62:
                             self._install_progress = max(self._install_progress, pct)
                             self.progress["value"] = self._install_progress
                         self._refresh_install_eta()
@@ -1912,7 +2163,33 @@ class InstallerGUI(tk.Tk):
             if match:
                 self._ssd_gb = match.group(1)
                 self._ssd_gb_at = time.time()
+                if getattr(self, "_install_ssd_baseline_gb", None) is None:
+                    try:
+                        self._install_ssd_baseline_gb = float(match.group(1))
+                    except ValueError:
+                        pass
                 self._apply_ssd_progress()
+        elif "GUI apps on SSD:" in line:
+            self._install_phase = f"Apps check — {line.lstrip('✓ℹ⚠ ').strip()}"
+            self._install_progress = max(self._install_progress, 40)
+            self.progress["value"] = self._install_progress
+        elif "ComfyUI repo:" in line or "ComfyUI models:" in line:
+            self._install_phase = f"Catalog scan — {line.lstrip('✓ℹ⚠ ').strip()}"
+            self._install_progress = max(self._install_progress, 8)
+            self.progress["value"] = self._install_progress
+        elif "Ollama models:" in line and "present" in line:
+            self._install_phase = f"Ollama check — {line.lstrip('✓ℹ⚠ ').strip()}"
+            self._install_progress = max(self._install_progress, 30)
+            self.progress["value"] = self._install_progress
+        elif "already on SSD — skipping download" in line:
+            app = line.split("already on SSD", 1)[0].replace("✓", "").strip()
+            self._install_phase = f"Apps — {app} OK on SSD"
+            self._install_progress = max(self._install_progress, 44)
+            self.progress["value"] = self._install_progress
+        elif "ComfyUI already set up" in line or "synced tier nodes" in line.lower():
+            self._install_phase = "ComfyUI — verified / nodes synced"
+            self._install_progress = max(self._install_progress, 62)
+            self.progress["value"] = self._install_progress
         elif "Skipped:" in line and any(m in line for m in GATED_MODEL_MARKERS):
             notified = getattr(self, "_hf_license_notified", False)
             if not notified and (
@@ -1934,7 +2211,8 @@ class InstallerGUI(tk.Tk):
 
     # Folders that grow during install — faster to measure than the whole tree.
     _SSD_MEASURE_DIRS = (
-        "ollama-models", "comfyui-models", "installers", "Applications", "comfyui",
+        "ollama-models", "comfyui-models", "lm-studio-models",
+        "installers", "Applications", "comfyui",
     )
 
     def _measure_download_gb(self, root):
@@ -1958,19 +2236,23 @@ class InstallerGUI(tk.Tk):
         return f"{total_kb / (1024 * 1024):.1f}"
 
     def _apply_ssd_progress(self):
-        """Progress bar follows live SSD size vs tier target (not stuck on phase %)."""
+        """Progress from new downloads this session — not pre-existing SSD content."""
         if not self.installing:
             return
         ssd = getattr(self, "_ssd_gb", None)
-        target = TIER_SSD_GB.get(self.selected_tier.get())
+        target = self._ssd_target_gb()
         if not ssd or not target:
             return
         try:
             gb = float(ssd)
         except (TypeError, ValueError):
             return
-        # 8% at kickoff → 97% when folder hits tier target
-        ssd_pct = 8 + min(gb / float(target), 1.0) * 89
+        baseline = getattr(self, "_install_ssd_baseline_gb", None)
+        if baseline is not None:
+            delta = max(0.0, gb - float(baseline))
+            ssd_pct = 8 + min(delta / float(target), 1.0) * 89
+        else:
+            ssd_pct = 8 + min(gb / float(target), 1.0) * 89
         if ssd_pct > self._install_progress:
             self._install_progress = ssd_pct
             self.progress["value"] = self._install_progress
@@ -1990,7 +2272,7 @@ class InstallerGUI(tk.Tk):
             self.ssd_size_label.configure(text="", fg=GREEN, disabledforeground=GREEN)
             return
         ssd = getattr(self, "_ssd_gb", None)
-        target = TIER_SSD_GB.get(self.selected_tier.get())
+        target = self._ssd_target_gb()
         updated = getattr(self, "_ssd_gb_at", None)
         age = ""
         if updated:
@@ -1999,9 +2281,9 @@ class InstallerGUI(tk.Tk):
                 age = f"  ·  updated {age_s}s ago"
             else:
                 age = f"  ·  updated {age_s // 60}m ago"
-        tier = self.selected_tier.get().upper()
+        label = self._install_target_label()
         if ssd and target:
-            text = f"SSD: {ssd} GB of ~{target} GB ({tier}){age}"
+            text = f"SSD: {ssd} GB of ~{target} GB ({label}){age}"
         elif ssd:
             text = f"SSD: {ssd} GB downloaded{age}"
         else:
@@ -2028,6 +2310,8 @@ class InstallerGUI(tk.Tk):
                     if not self.installing:
                         return
                     if gb is not None:
+                        if getattr(self, "_install_ssd_baseline_gb", None) is None:
+                            self._install_ssd_baseline_gb = gb
                         self._ssd_gb = gb
                         self._ssd_gb_at = time.time()
                         self._apply_ssd_progress()
@@ -2172,8 +2456,14 @@ class InstallerGUI(tk.Tk):
             if abs(wrap - self._ssd_status_wrap) < 16:
                 return
             self._ssd_status_wrap = wrap
-            for widget in (self._ssd_access_label, self.space_label, self.warning_label):
-                widget.configure(wraplength=wrap)
+            for widget in (
+                self._ssd_access_label,
+                self.space_label,
+                self.warning_label,
+                getattr(self, "_hf_license_hint", None),
+            ):
+                if widget is not None:
+                    widget.configure(wraplength=wrap)
         except tk.TclError:
             pass
 
@@ -2322,20 +2612,189 @@ class InstallerGUI(tk.Tk):
             "Then paste your Read token here and click INSTALL again.",
         )
 
-    def _show_hf_login_help(self):
+    def _open_hf_sensitive_settings(self):
+        open_hf_sensitive_settings()
         messagebox.showinfo(
-            "HuggingFace — SD 3.5 Medium only",
-            "Only SD 3.5 Medium needs extra steps. CyberRealistic is public.\n\n"
-            "STEP 1 — Accept license on the website (required for SD 3.5)\n"
-            "  Click \"SD 3.5 license\" (opens browser) while logged into huggingface.co\n"
-            "  stabilityai/stable-diffusion-3.5-medium → Agree and access repository\n\n"
-            "STEP 2 — Access token\n"
-            "  Settings → Access Tokens → New token (Read)\n"
-            "  Paste Token from Clipboard (or Type Token…), then INSTALL\n\n"
-            "Terminal alternative (saves token; browser license accept still required):\n"
-            "  pip3 install -U huggingface_hub\n"
-            "  huggingface-cli login\n\n"
-            "Studio works without SD 3.5 — 25/26 ComfyUI models download fine.",
+            "HuggingFace content preferences",
+            "Opened huggingface.co/settings/content-preferences\n\n"
+            "Enable sensitive content viewing (free account).\n\n"
+            "Tip: Use Setup guide for the full walkthrough (account → sensitive → token → paste).\n\n"
+            "After install if needed: LOCAL_AI_GEN/scripts/fetch-sensitive-models.sh",
+        )
+
+    def _show_hf_sensitive_wizard(self, start_step=0):
+        """Step-by-step assistant for the 3 optional HuggingFace realism weights."""
+        if getattr(self, "_hf_wizard_win", None) is not None:
+            try:
+                if self._hf_wizard_win.winfo_exists():
+                    self._hf_wizard_win.lift()
+                    self._hf_wizard_win.focus_force()
+                    return
+            except tk.TclError:
+                pass
+
+        win = tk.Toplevel(self)
+        win.title("HuggingFace setup — 3 optional models")
+        win.configure(bg=BG_CARD)
+        win.transient(self)
+        win.resizable(False, False)
+        self._hf_wizard_win = win
+        self._hf_wizard_step_idx = max(0, min(start_step, len(HF_SENSITIVE_WIZARD_STEPS) - 1))
+
+        header = flat_text(
+            win, text="", font=("Helvetica", 13, "bold"),
+            fg=ACCENT2, bg=BG_CARD, anchor="w", readonly=True, wraplength=440,
+        )
+        header.pack(fill=tk.X, padx=16, pady=(14, 6))
+
+        body = flat_text(
+            win, text="", font=("Helvetica", 11),
+            fg=TEXT, bg=BG_CARD, anchor="nw", justify=tk.LEFT,
+            readonly=True, wraplength=440,
+        )
+        body.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
+
+        open_row = tk.Frame(win, bg=BG_CARD)
+        open_row.pack(fill=tk.X, padx=16, pady=(0, 8))
+        open_btn = tk.Button(
+            open_row, text="Open page in browser",
+            font=("Helvetica", 10, "bold"), fg="white", bg="#1f6feb",
+            activebackground="#388bfd", relief=tk.FLAT, padx=10, pady=6,
+            cursor="hand2",
+        )
+        open_btn.pack(side=tk.LEFT)
+
+        nav = tk.Frame(win, bg=BG_CARD)
+        nav.pack(fill=tk.X, padx=16, pady=(4, 14))
+
+        def render_step():
+            step = HF_SENSITIVE_WIZARD_STEPS[self._hf_wizard_step_idx]
+            n = len(HF_SENSITIVE_WIZARD_STEPS)
+            header.configure(text=f"{step['title']}  ({self._hf_wizard_step_idx + 1}/{n})")
+            body.configure(text=step["body"])
+            if step.get("url") and step.get("open_label"):
+                open_btn.configure(
+                    text=step["open_label"], state=tk.NORMAL,
+                    command=lambda u=step["url"]: open_hf_url(u),
+                )
+                open_btn.pack(side=tk.LEFT)
+            else:
+                open_btn.pack_forget()
+            back_btn.configure(
+                state=tk.NORMAL if self._hf_wizard_step_idx > 0 else tk.DISABLED,
+            )
+            if self._hf_wizard_step_idx >= n - 1:
+                next_btn.configure(text="Done — paste token below")
+            else:
+                next_btn.configure(text="Next →")
+
+        def go_back():
+            if self._hf_wizard_step_idx > 0:
+                self._hf_wizard_step_idx -= 1
+                render_step()
+
+        def go_next():
+            if self._hf_wizard_step_idx < len(HF_SENSITIVE_WIZARD_STEPS) - 1:
+                self._hf_wizard_step_idx += 1
+                render_step()
+            else:
+                win.destroy()
+                self._hf_wizard_win = None
+                messagebox.showinfo(
+                    "Paste your token",
+                    "Scroll to the orange HuggingFace box on the main screen.\n\n"
+                    "Paste Token from Clipboard → then click INSTALL.\n\n"
+                    "No token? Install anyway — use fetch-sensitive-models.sh after.",
+                )
+
+        back_btn = tk.Button(
+            nav, text="← Back", font=("Helvetica", 10, "bold"),
+            fg=TEXT, bg="#30363d", activebackground="#484f58",
+            relief=tk.FLAT, padx=10, pady=6, cursor="hand2", command=go_back,
+        )
+        back_btn.pack(side=tk.LEFT)
+        tk.Button(
+            nav, text="Close", font=("Helvetica", 10),
+            fg=TEXT_DIM, bg=BG_CARD, activebackground=BG_SEL,
+            relief=tk.FLAT, padx=8, pady=6, cursor="hand2",
+            command=lambda: (win.destroy(), setattr(self, "_hf_wizard_win", None)),
+        ).pack(side=tk.RIGHT)
+        next_btn = tk.Button(
+            nav, text="Next →", font=("Helvetica", 10, "bold"),
+            fg="white", bg="#238636", activebackground="#2ea043",
+            relief=tk.FLAT, padx=12, pady=6, cursor="hand2", command=go_next,
+        )
+        next_btn.pack(side=tk.RIGHT, padx=(0, 8))
+
+        render_step()
+        win.update_idletasks()
+        w, h = win.winfo_reqwidth(), win.winfo_reqheight()
+        x = self.winfo_rootx() + max(0, (self.winfo_width() - w) // 2)
+        y = self.winfo_rooty() + max(0, (self.winfo_height() - h) // 2)
+        win.geometry(f"+{x}+{y}")
+
+    def _maybe_offer_hf_setup_before_install(self):
+        """Return False if user cancels install from the pre-install HF prompt."""
+        if not self.unfiltered_pack.get() or self._hf_token_value():
+            return True
+        if self._load_prefs().get("saw_hf_sensitive_setup_intro"):
+            return True
+        ans = messagebox.askyesnocancel(
+            "Before you install — HuggingFace (optional)",
+            "WHEN: Now is the best time to set up HuggingFace for the 3 optional realism weights.\n\n"
+            "You have not pasted a token yet. Those 3 will likely skip.\n"
+            "The rest of the pack (~140 GB) still installs normally.\n\n"
+            "• Yes — open step-by-step setup guide\n"
+            "• No — install anyway (retry script on SSD later)\n"
+            "• Cancel — stay on this screen",
+        )
+        if ans is None:
+            return False
+        if ans:
+            self._show_hf_sensitive_wizard()
+        return True
+
+    def _maybe_offer_hf_setup_after_install(self, ssd_path):
+        missing = count_missing_sensitive_models(ssd_path)
+        if missing <= 0 or not self.unfiltered_pack.get():
+            return
+        fetch = os.path.join(ssd_path, "LOCAL_AI_GEN", "scripts", "fetch-sensitive-models.sh")
+        if messagebox.askyesno(
+            "Optional — 3 realism models",
+            f"Install finished. {missing} of 3 optional HuggingFace realism weights did not download.\n\n"
+            "WHEN: Do this whenever you are ready — studio is already usable.\n\n"
+            "• Open Setup guide — walk through account + content preferences + token\n"
+            "• Then run fetch-sensitive-models.sh on your SSD\n\n"
+            "Open the setup guide now?",
+        ):
+            self._show_hf_sensitive_wizard()
+        else:
+            messagebox.showinfo(
+                "Retry later",
+                f"When ready, run:\n{fetch}\n\n"
+                "Or click INSTALL again with Unfiltered Pack + HF token pasted.",
+            )
+
+    def _show_hf_login_help(self):
+        pack = self.unfiltered_pack.get()
+        pack_block = ""
+        if pack:
+            pack_block = (
+                "\nUNFILTERED PACK — use Setup guide button for full walkthrough:\n"
+                "  WHEN (before install): account → content preferences → Read token → paste\n"
+                "  WHEN (after install): scripts/fetch-sensitive-models.sh on SSD\n"
+                "  Install never blocks if these 3 skip.\n"
+            )
+        messagebox.showinfo(
+            "HuggingFace — optional steps",
+            "Most models download with no account. Two optional cases:\n"
+            f"{pack_block}\n"
+            "SD 3.5 MEDIUM (Ultimate tier only):\n"
+            "  Click SD 3.5 license → Agree on stabilityai/stable-diffusion-3.5-medium\n"
+            "  + Read token pasted here\n\n"
+            "TOKEN:\n"
+            "  Settings → Access Tokens → New (Read) → Paste Token from Clipboard\n\n"
+            "Terminal: pip3 install -U huggingface_hub && huggingface-cli login",
         )
 
     def _maybe_show_permission_help(self):
@@ -2346,13 +2805,20 @@ class InstallerGUI(tk.Tk):
         messagebox.showinfo(
             "Before you install",
             "One Mac quirk: external SSDs need a one-time \"Allow SSD Access\" click.\n\n"
-            "Use the orange button in step 2 BEFORE clicking INSTALL.\n"
+            "Use the orange button in step 3 BEFORE clicking INSTALL.\n"
             "That avoids the confusing folder popup during download.\n\n"
             "See \"Mac popup help?\" if Open keeps opening folders.",
         )
 
     def _validate(self):
-        tier = self.selected_tier.get()
+        tier_on, pack_on = self._install_targets()
+        if not tier_on and not pack_on:
+            messagebox.showerror(
+                "Nothing selected",
+                "Select a package (click a card), and/or check Unfiltered Models Pack.",
+            )
+            return False
+        tier = self._tier_for_install()
         path = self.drive_path.get().strip()
         if not path or not os.path.isdir(path):
             messagebox.showerror("No Drive Selected", "Pick your external SSD or click Browse…")
@@ -2371,21 +2837,48 @@ class InstallerGUI(tk.Tk):
         except OSError:
             messagebox.showerror("Drive Error", f"Cannot read drive: {path}")
             return False
-        need = {"starter": 100, "standard": 180, "pro": 230, "ultimate": 320}[tier]
+        need = self._tier_drive_need_gb(tier)
         if free < need - 20:
+            target = self._install_target_label()
+            extra = ""
+            if pack_on:
+                extra = f"\nIncludes Unfiltered Pack (+~{UNFILTERED_PACK_GB} GB)."
             if not messagebox.askyesno(
                 "Low Space Warning",
-                f"Only {free} GB free but {tier.upper()} needs ~{need} GB.\n\nContinue anyway?",
-            ):
-                return False
-        if tier == "ultimate":
-            if not messagebox.askyesno(
-                "ULTIMATE Tier",
-                "ULTIMATE downloads ~150 GB (measured ~147 GB on a full install).\n\n"
-                "On 16GB RAM, run ONE model at a time.\n\nProceed?",
+                f"Only {free} GB free but {target} needs ~{need} GB.{extra}\n\nContinue anyway?",
             ):
                 return False
         return True
+
+    def _install_confirm_message(self, ssd):
+        """Single pre-install summary — replaces separate pack/tier/models-only prompts."""
+        tier_on, pack_on = self._install_targets()
+        tier = self._tier_for_install()
+        est = self._install_time_estimate()
+        target = self._install_target_label()
+        models_only = self._effective_models_only(ssd)
+        notes = []
+        if models_only:
+            headline = f"Models-only download: {target}"
+            notes.append("Skips apps, ComfyUI setup, Homebrew, and Ollama — SSD apps stay untouched")
+        else:
+            headline = f"Install {target}" if tier_on or pack_on else "Install"
+            notes.append("Fresh Mac? Apple's Command Line Tools only (installer opens it if missing)")
+            notes.append("Homebrew + Ollama are installed for you")
+        if pack_on and not self._hf_token_value():
+            notes.append("No HF token yet — 3 optional realism weights may skip (rest of pack still installs)")
+        if tier_on and tier == "ultimate":
+            notes.append("ULTIMATE ~150 GB — on 16GB RAM, run one heavy model at a time")
+        common = [
+            "SSD access should already be granted (orange button in step 3)",
+            "Install runs from THIS app — not Terminal (fewer Mac popups)",
+            "Keep Mac plugged in — sleep is prevented during install",
+            "Re-run anytime — scans SSD vs catalog, fills gaps",
+        ]
+        if not models_only:
+            common.insert(0, "Progress shows here; details in /tmp/local-ai-installer*.log")
+        body = "\n".join(f"• {line}" for line in notes + common)
+        return f"{headline}\nUsually takes {est}.\n\n{body}\n\nStart now?"
 
     def _check_command_line_tools(self):
         try:
@@ -2442,18 +2935,18 @@ class InstallerGUI(tk.Tk):
                 text="Installing:",
                 fg=ACCENT2, disabledforeground=ACCENT2,
             )
-            self._collapse_detail_for_install()
             if not self._progress_stack.winfo_ismapped():
                 self._progress_stack.pack(fill=tk.X, pady=(4, 0), before=self.status_label)
         else:
+            btn = self._install_button_label()
+            step3 = f"Step 3 — click {btn} when selections + SSD are set:"
             self._install_cta.configure(
-                text="Step 3 — click INSTALL when tier + SSD are set:",
+                text=step3,
                 fg=ACCENT2, disabledforeground=ACCENT2,
             )
             self._progress_stack.pack_forget()
             if self.log_frame.winfo_ismapped():
                 self.log_frame.pack_forget()
-        self.after_idle(self._layout_detail_viewport)
         self.after_idle(self._sync_footer_progress_wrap)
 
     def _sync_install_controls(self):
@@ -2465,7 +2958,7 @@ class InstallerGUI(tk.Tk):
             if self.installing:
                 self.install_btn.configure(state=tk.DISABLED, text="INSTALLING…", bg=TEXT_DIM)
             else:
-                self.install_btn.configure(state=tk.NORMAL, text="INSTALL LOCAL AI STUDIO", bg=ACCENT)
+                self.install_btn.configure(state=tk.NORMAL, text=self._install_button_label(), bg=ACCENT)
                 if pid:
                     self._set_status(
                         f"Background install running (PID {pid}) — click STOP to cancel.",
@@ -2474,7 +2967,7 @@ class InstallerGUI(tk.Tk):
         else:
             self.stop_btn.configure(state=tk.DISABLED, bg="#6e7681", cursor="arrow")
             if not self.installing:
-                self.install_btn.configure(state=tk.NORMAL, text="INSTALL LOCAL AI STUDIO", bg=ACCENT)
+                self.install_btn.configure(state=tk.NORMAL, text=self._install_button_label(), bg=ACCENT)
         self._sync_footer_layout()
 
     def _poll_background_install(self):
@@ -2597,8 +3090,7 @@ class InstallerGUI(tk.Tk):
         if hf_token.strip():
             env["HF_TOKEN"] = hf_token.strip()
         cmd = ["/bin/bash", installer, "--tier", tier, "--ssd", ssd, "--no-gui"]
-        if comfyui_ready_on_ssd(ssd):
-            cmd.append("--no-comfy")
+        cmd.extend(self._build_install_flags(ssd=ssd))
         self.proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
@@ -2645,6 +3137,8 @@ class InstallerGUI(tk.Tk):
             return
         if not self._check_command_line_tools():
             return
+        if not self._maybe_offer_hf_setup_before_install():
+            return
 
         running_pid = self._get_running_install_pid()
         if running_pid:
@@ -2657,7 +3151,13 @@ class InstallerGUI(tk.Tk):
             self._sync_install_controls()
             return
 
-        tier = self.selected_tier.get()
+        tier_on, pack_on = self._install_targets()
+        if tier_on:
+            tier = self.selected_tier.get()
+        elif pack_on:
+            tier = "ultimate"
+        else:
+            tier = self._tier_for_install()
         ssd = self.drive_path.get().strip()
         try:
             installer, workdir = prepare_install_bundle()
@@ -2671,22 +3171,16 @@ class InstallerGUI(tk.Tk):
 
         self._maybe_show_permission_help()
 
-        est = TIER_TIME_EST.get(tier, "2–4 hours")
-        if not messagebox.askokcancel(
-            "Start install?",
-            f"{tier.upper()} usually takes {est}.\n\n"
-            "Fresh Mac? You only need Apple's Command Line Tools (installer opens it if missing).\n"
-            "Homebrew + Ollama are installed for you — no separate downloads.\n\n"
-            "• SSD access should already be granted (orange button in step 2)\n"
-            "• Install runs from THIS app — not Terminal (fewer Mac popups)\n"
-            "• Keep Mac plugged in — sleep is prevented during install\n"
-            "• Progress shows here; details in /tmp/local-ai-installer*.log\n"
-            "• Re-run anytime — scans SSD vs catalog, fills gaps\n\n"
-            "Start now?",
-        ):
+        est = self._install_time_estimate()
+        if not messagebox.askokcancel("Start install?", self._install_confirm_message(ssd)):
             return
 
-        self._save_prefs(last_ssd=ssd, last_tier=tier)
+        tier_on, pack_on = self._install_targets()
+        self._save_prefs(
+            last_ssd=ssd,
+            last_tier=self.selected_tier.get() if tier_on else "",
+            unfiltered_pack=pack_on,
+        )
         self._show_install_log()
         self.installing = True
         self._install_started = time.time()
@@ -2697,6 +3191,7 @@ class InstallerGUI(tk.Tk):
         self._install_time_hint = est
         self._ssd_gb = None
         self._ssd_gb_at = None
+        self._install_ssd_baseline_gb = None
         self._ssd_measure_busy = False
         self._pulse_on = True
         self._install_log_path = None
@@ -2708,15 +3203,21 @@ class InstallerGUI(tk.Tk):
         self._hf_license_notified = False
         self._sync_install_controls()
         self.progress["value"] = self._install_progress
+        start_label = self._install_target_label()
         self._set_status(
-            f"● Installing {tier.upper()} — keep this window open for progress.",
+            f"● Installing {start_label} — keep this window open for progress.",
             ACCENT2,
         )
         self._refresh_install_eta()
         self.after(10000, self._install_tick)
         self.after(1000, self._pulse_tick)
         self.after(3000, self._poll_ssd_size)
-        self._log_line(f"━━━ Starting {tier.upper()} install → {ssd} ━━━", "step")
+        flags = self._build_install_flags(ssd=ssd)
+        self._log_line(f"━━━ Starting {start_label} install → {ssd} ━━━", "step")
+        self._log_line(
+            f"Mode: {self._install_mode_label()}  ·  tier={tier.upper()}  ·  flags={flags or '(none)'}",
+            "info",
+        )
 
         def tail_log():
             if self.installing:
@@ -2750,13 +3251,6 @@ class InstallerGUI(tk.Tk):
                         0, self._log_line,
                         "SSD seal failed — click Allow SSD Access or Stop Popups in Mac Settings.",
                         "warn",
-                    )
-                skip_comfy = comfyui_ready_on_ssd(ssd)
-                if skip_comfy:
-                    self.after(
-                        0, self._log_line,
-                        "ComfyUI already on SSD — skipping git/pip (avoids Mac folder popups).",
-                        "info",
                     )
                 self._launch_install_background(
                     installer, workdir, tier, ssd, hf_token=hf_token,
@@ -2855,7 +3349,7 @@ class InstallerGUI(tk.Tk):
             if hf_total is None:
                 hf_total = parsed_total
 
-        target = TIER_SSD_GB.get(tier, 150)
+        target = self._ssd_target_gb(tier)
         size_line = f"SSD: ~{ssd_gb} GB measured" if ssd_gb else "SSD: size measuring…"
         models_line = ""
         if hf_ok is not None and hf_total is not None:
@@ -2866,6 +3360,17 @@ class InstallerGUI(tk.Tk):
                 )
         else:
             models_line = "ComfyUI models: see install log"
+
+        if self._effective_models_only(self.drive_path.get().strip()):
+            return (
+                f"Models download complete!\n\n"
+                f"{size_line} in\n{dest}\n"
+                f"(~{target} GB target for {self._install_target_label()})\n"
+                f"{models_line}\n\n"
+                f"Your existing apps were not changed.\n"
+                f"Open ComfyUI or LM Studio from your Desktop launcher to use new weights.\n\n"
+                f"See docs/WHICH_APP.txt on your SSD for paths and app tips."
+            )
 
         return (
             f"Local AI Studio is installed!\n\n"
@@ -2955,7 +3460,13 @@ class InstallerGUI(tk.Tk):
                     )
                     self._apply_ssd_progress()
                 msg = self._build_completion_message(dest, tier)
-                self.after(0, lambda: messagebox.showinfo("You're Done! 🎉", msg))
+                ssd_path = self.drive_path.get().strip()
+
+                def show_done():
+                    messagebox.showinfo("You're Done! 🎉", msg)
+                    self._maybe_offer_hf_setup_after_install(ssd_path)
+
+                self.after(0, show_done)
 
             threading.Thread(target=finalize_complete, daemon=True).start()
             try:

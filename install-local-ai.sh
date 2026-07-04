@@ -30,6 +30,9 @@ DRY_RUN=false
 SKIP_DOCKER=false
 SKIP_COMFY=false
 MODELS_ONLY=false
+UNFILTERED_PACK=false
+UNFILTERED_PACK_ONLY=false
+SENSITIVE_MODELS_ONLY=false
 NO_GUI=false
 AUDIT_ONLY=false
 LAUNCHERS_ONLY=false
@@ -130,6 +133,9 @@ parse_args() {
       --no-docker) SKIP_DOCKER=true; shift ;;
       --no-comfy)  SKIP_COMFY=true; shift ;;
       --models-only) MODELS_ONLY=true; NO_GUI=true; SKIP_COMFY=true; SKIP_DOCKER=true; shift ;;
+      --unfiltered-pack) UNFILTERED_PACK=true; shift ;;
+      --unfiltered-pack-only) UNFILTERED_PACK=true; UNFILTERED_PACK_ONLY=true; MODELS_ONLY=true; NO_GUI=true; SKIP_COMFY=true; SKIP_DOCKER=true; shift ;;
+      --sensitive-models-only) UNFILTERED_PACK=true; SENSITIVE_MODELS_ONLY=true; MODELS_ONLY=true; NO_GUI=true; SKIP_COMFY=true; SKIP_DOCKER=true; shift ;;
       --dry-run)     DRY_RUN=true; shift ;;
       --no-gui)      NO_GUI=true; shift ;;
       --audit-only)  AUDIT_ONLY=true; NO_GUI=true; shift ;;
@@ -147,6 +153,9 @@ parse_args() {
         echo "       --audit-only (scan SSD vs catalog, no downloads)"
         echo "       --launchers-only (Desktop shortcuts only — no downloads)"
         echo "       --models-only (ComfyUI HF models only — skips ComfyUI/git/pip popups)"
+        echo "       --unfiltered-pack (add ~150 GB advanced edit pack after tier models)"
+        echo "       --unfiltered-pack-only (pack models only — no apps/ComfyUI setup)"
+        echo "       --sensitive-models-only (3 optional HF-sensitive realism weights only)"
         echo "       --refresh-hf (re-download HF models when remote file is larger)"
         exit 0
         ;;
@@ -226,6 +235,9 @@ pick_external_ssd() {
     free_gb=$(df -g "/Volumes/$vol" 2>/dev/null | awk 'NR==2 {print $4}')
     local need_gb
     need_gb=$(tier_drive_min_gb "$INSTALL_TIER" 2>/dev/null || echo 180)
+    if [[ "${UNFILTERED_PACK:-false}" == true ]]; then
+      need_gb=$((need_gb + $(unfiltered_pack_drive_min_gb 2>/dev/null || echo 165)))
+    fi
     [[ "${free_gb:-0}" -ge "$need_gb" ]] || continue
     candidates+=("/Volumes/$vol")
     labels+=("$vol — ${free_gb} GB free")
@@ -391,6 +403,17 @@ comfyui_venv_dir() {
   fi
 }
 
+# SQLite (chat history DB) fails on ExFAT — keep Open WebUI data on internal Mac.
+open_webui_data_dir() {
+  if ssd_is_exfat; then
+    local hash
+    hash=$(printf '%s' "$EXTERNAL_AI" | shasum -a 256 | awk '{print substr($1,1,12)}')
+    echo "$HOME/Library/Application Support/LocalAIStudio/open-webui-data-${hash}"
+  else
+    echo "$EXTERNAL_AI/open-webui"
+  fi
+}
+
 _heartbeat() {
   local label="$1" n=0
   while true; do
@@ -446,6 +469,9 @@ create_layout() {
     "$EXTERNAL_AI/comfyui-models/upscale_models" "$EXTERNAL_AI/comfyui-models/clip"
     "$EXTERNAL_AI/comfyui-models/unet" "$EXTERNAL_AI/comfyui-models/diffusion_models"
     "$EXTERNAL_AI/comfyui-models/ipadapter" "$EXTERNAL_AI/comfyui-models/clip_vision"
+    "$EXTERNAL_AI/comfyui-models/text_encoders" "$EXTERNAL_AI/comfyui-models/insightface"
+    "$EXTERNAL_AI/comfyui-models/insightface/models" "$EXTERNAL_AI/comfyui-models/sam2"
+    "$EXTERNAL_AI/comfyui-models/onnx"
   )
   for d in "${dirs[@]}"; do run mkdir -p "$d"; done
   ok "Root: $EXTERNAL_AI"
@@ -463,6 +489,7 @@ export OLLAMA_MODELS="$EXTERNAL_AI/ollama-models"
 export COMFYUI_ROOT="$EXTERNAL_AI/comfyui/ComfyUI"
 export COMFYUI_VENV="$(comfyui_venv_dir)"
 export COMFYUI_MODELS="$EXTERNAL_AI/comfyui-models"
+export OPEN_WEBUI_DATA="$(open_webui_data_dir)"
 export PATH="\$LOCAL_AI_ROOT/scripts:\$PATH"
 ENV
   local marker="# >>> local-ai-studio >>>" rc
@@ -539,7 +566,11 @@ download_file() {
         warn "Skipped: $label — missing/invalid HF token (paste Read token in installer or: huggingface-cli login)"
         ;;
       403)
-        warn "Skipped: $label — log into HuggingFace and click Agree to license: $page"
+        if [[ "$label" == *"Realism"* || "$label" == *"realism"* || "$label" == *"Into"* ]]; then
+          warn "Skipped: $label — enable HuggingFace Content preferences (settings/content-preferences), then re-run fetch-sensitive-models.sh"
+        else
+          warn "Skipped: $label — log into HuggingFace and click Agree to license: $page"
+        fi
         ;;
       404)
         warn "Skipped: $label — file not found on HuggingFace (HTTP 404)"
@@ -677,6 +708,210 @@ download_hf_models() {
   ok "Downloaded $ok_count / $count models (failed = gated or offline; use ComfyUI Manager)"
 }
 
+postprocess_unfiltered_pack() {
+  local zip="$EXTERNAL_AI/comfyui-models/insightface/antelopev2.zip"
+  local models_dir="$EXTERNAL_AI/comfyui-models/insightface/models"
+  [[ -f "$zip" ]] || return 0
+  if [[ -d "$models_dir/antelopev2" ]]; then
+    ok "InsightFace antelopev2 already unpacked"
+    return 0
+  fi
+  command -v unzip &>/dev/null || { warn "unzip missing — unpack antelopev2.zip manually into insightface/models/"; return 0; }
+  run mkdir -p "$models_dir"
+  run unzip -oq "$zip" -d "$models_dir"
+  ok "InsightFace antelopev2 unpacked"
+}
+
+download_unfiltered_mlx_models() {
+  step "LM Studio MLX models (Unfiltered Pack)"
+  local entry repo size_mb label dest
+  local count=0 ok_count=0
+
+  if ! command -v huggingface-cli &>/dev/null; then
+    info "Installing huggingface_hub for MLX snapshots..."
+    [[ "$DRY_RUN" == true ]] || pip3 install -q -U "huggingface_hub[cli]" 2>>"$LOG_FILE" || true
+  fi
+
+  while IFS= read -r entry; do
+    IFS='|' read -r repo size_mb label <<<"$entry"
+    dest="$EXTERNAL_AI/lm-studio-models/$repo"
+    count=$((count + 1))
+    if [[ -f "$dest/config.json" ]]; then
+      ok "Already have (${count}): $label"
+      ok_count=$((ok_count + 1))
+      continue
+    fi
+    info "MLX (${count}): $label (~${size_mb} MB)"
+    [[ "$DRY_RUN" == true ]] && continue
+    _heartbeat "huggingface download $repo" &
+    local hb=$!
+    local dl_ok=false
+    if command -v huggingface-cli &>/dev/null; then
+      if huggingface-cli download "$repo" --local-dir "$dest" >>"$LOG_FILE" 2>&1; then
+        dl_ok=true
+      fi
+    fi
+    if [[ "$dl_ok" != true ]]; then
+      if python3 - "$repo" "$dest" <<'PY' >>"$LOG_FILE" 2>&1; then
+import sys
+from huggingface_hub import snapshot_download
+snapshot_download(sys.argv[1], local_dir=sys.argv[2])
+PY
+        dl_ok=true
+      fi
+    fi
+    kill "$hb" 2>/dev/null
+    wait "$hb" 2>/dev/null || true
+    if [[ "$dl_ok" == true && -f "$dest/config.json" ]]; then
+      ok "Saved MLX (${count}): $label"
+      ok_count=$((ok_count + 1))
+    else
+      warn "MLX download failed: $label — pull in LM Studio Discover tab"
+    fi
+  done < <(get_unfiltered_pack_mlx_models)
+
+  ok "MLX pack: $ok_count / $count folders"
+}
+
+write_sensitive_models_support() {
+  [[ -n "${EXTERNAL_AI:-}" && -d "$EXTERNAL_AI" ]] || return 0
+  local manifest="$EXTERNAL_AI/.sensitive-models.tsv"
+  : > "$manifest"
+  local entry subdir file path _ label
+  while IFS= read -r entry; do
+    IFS='|' read -r subdir file path _ label <<<"$entry"
+    printf '%s\t%s\t%s\t%s\n' "$subdir" "$file" "$path" "$label" >> "$manifest"
+  done < <(get_unfiltered_pack_sensitive_models)
+
+  cat > "$EXTERNAL_AI/scripts/fetch-sensitive-models.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+# Retry the 3 optional HuggingFace "sensitive content" photoreal weights.
+# Install never blocks on these — run this after HF setup, or re-run INSTALL with pack checked.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+MANIFEST="$ROOT/.sensitive-models.tsv"
+[[ -f "$MANIFEST" ]] || { echo "No sensitive manifest at $MANIFEST"; exit 0; }
+
+hf_token() {
+  [[ -n "${HF_TOKEN:-}" ]] && { printf '%s' "$HF_TOKEN"; return 0; }
+  [[ -f "$HOME/.cache/huggingface/token" ]] && tr -d '[:space:]' <"$HOME/.cache/huggingface/token"
+}
+
+echo "━━━ HuggingFace — 3 optional photoreal weights ━━━"
+echo "WHEN: Run this after install if they skipped, or anytime you add a token later."
+echo ""
+echo "STEP 1 — Free account:     https://huggingface.co/join"
+echo "STEP 2 — Content prefs:    https://huggingface.co/settings/content-preferences"
+echo "STEP 3 — Read token:       https://huggingface.co/settings/tokens"
+echo "         (export HF_TOKEN=hf_... before this script, or: huggingface-cli login)"
+echo ""
+echo "Full guide: $ROOT/docs/HUGGINGFACE_SENSITIVE.txt"
+echo ""
+
+token=""
+token="$(hf_token 2>/dev/null || true)"
+auth=()
+[[ -n "$token" ]] && auth=(-H "Authorization: Bearer $token")
+
+ok=0 miss=0
+while IFS=$'\t' read -r subdir file path label; do
+  [[ -n "$subdir" ]] || continue
+  dest="$ROOT/comfyui-models/$subdir/$file"
+  url="https://huggingface.co/$path"
+  if [[ -f "$dest" ]] && [[ "$(stat -f%z "$dest" 2>/dev/null || echo 0)" -gt 50000000 ]]; then
+    echo "✓ Already have: $label"
+    ok=$((ok + 1))
+    continue
+  fi
+  echo "↓ $label"
+  code=$(curl -sL "${auth[@]}" --retry 3 -C - -o "$dest" -w "%{http_code}" "$url" || echo "000")
+  if [[ "$code" =~ ^2 ]]; then
+    echo "✓ Saved: $(basename "$dest")"
+    ok=$((ok + 1))
+  else
+    rm -f "$dest"
+    echo "⚠ Skipped ($code): $label"
+    miss=$((miss + 1))
+  fi
+done < "$MANIFEST"
+
+echo ""
+echo "Done: $ok saved, $miss still missing."
+[[ "$miss" -gt 0 ]] && echo "Fix HF sensitive content + token, then run this script again."
+SCRIPT
+  chmod +x "$EXTERNAL_AI/scripts/fetch-sensitive-models.sh"
+}
+
+hf_sensitive_setup_reminder() {
+  [[ "${UNFILTERED_PACK:-false}" != true ]] && return 0
+  hf_get_token &>/dev/null && return 0
+  warn "No HuggingFace token — 3 optional realism weights will likely skip (install continues)"
+  info "WHEN (before install): free account → content preferences → sensitive content ON → Read token"
+  info "WHEN (after install): $EXTERNAL_AI/scripts/fetch-sensitive-models.sh"
+  info "Full walkthrough: $EXTERNAL_AI/docs/HUGGINGFACE_SENSITIVE.txt (GUI: Setup guide button)"
+  if [[ "$NO_GUI" == true ]] && [[ "$DRY_RUN" != true ]]; then
+    osascript -e 'display alert "Optional HuggingFace setup" message "3 realism weights need a free HuggingFace account + Sensitive Content ON + Read token.\n\nInstall continues without them.\n\nSee LOCAL_AI_GEN/docs/HUGGINGFACE_SENSITIVE.txt on your SSD after install — or run fetch-sensitive-models.sh later."' 2>/dev/null || true
+  fi
+}
+
+download_sensitive_pack_models() {
+  step "Sensitive realism weights (optional — install continues if these skip)"
+  print_phase_note "3 photoreal UNet weights — last in the pack queue, never blocks completion."
+  write_sensitive_models_support
+  hf_sensitive_setup_reminder
+  info "HF setup (one-time, free account):"
+  info "  1. huggingface.co/join — free account"
+  info "  2. huggingface.co/settings/content-preferences → enable sensitive content"
+  info "  3. huggingface.co/settings/tokens → New (Read) → paste in installer HF box"
+  info "  4. Or after install: $EXTERNAL_AI/scripts/fetch-sensitive-models.sh"
+
+  local entry subdir file path _ label dest url
+  local count=0 ok_count=0 skipped=0
+  set +e
+  while IFS= read -r entry; do
+    IFS='|' read -r subdir file path _ label <<<"$entry"
+    dest="$EXTERNAL_AI/comfyui-models/$subdir/$file"
+    url="https://huggingface.co/$path"
+    count=$((count + 1))
+    info "Sensitive (${count}/3): $label"
+    if download_file "$url" "$dest" "$label"; then
+      ok_count=$((ok_count + 1))
+    else
+      skipped=$((skipped + 1))
+    fi
+  done < <(get_unfiltered_pack_sensitive_models)
+  set -e
+
+  if [[ "$skipped" -gt 0 ]]; then
+    warn "Sensitive: ${ok_count}/3 downloaded — ${skipped} skipped (studio still fully usable)"
+    info "Retry later: $EXTERNAL_AI/scripts/fetch-sensitive-models.sh"
+  else
+    ok "Sensitive realism: all 3 downloaded"
+  fi
+}
+
+download_unfiltered_pack() {
+  step "Unfiltered Models Pack (~$(unfiltered_pack_gb 2>/dev/null || echo 150) GB)"
+  print_phase_note "Advanced photo editing pack — Qwen Image Edit, Flux Fill/Kontext, faces, poses, MLX vision."
+  write_sensitive_models_support
+  local entry subdir file path size label dest url
+  local count=0 ok_count=0
+
+  while IFS= read -r entry; do
+    IFS='|' read -r subdir file path size label <<<"$entry"
+    dest="$EXTERNAL_AI/comfyui-models/$subdir/$file"
+    url="https://huggingface.co/$path"
+    count=$((count + 1))
+    info "Pack (${count}): $label"
+    download_file "$url" "$dest" "$label" && ok_count=$((ok_count + 1)) || true
+  done < <(get_unfiltered_pack_models)
+
+  postprocess_unfiltered_pack
+  download_unfiltered_mlx_models
+  download_sensitive_pack_models
+  ok "Pack core: $ok_count / $count HF files (MLX + sensitive counted separately)"
+}
+
 install_gui_apps() {
   step "GUI apps → external SSD"
   if [[ -d "$EXTERNAL_AI/Applications/LM Studio.app" ]]; then
@@ -726,14 +961,18 @@ install_open_webui() {
   fi
   docker info &>/dev/null || { warn "Docker not running — skip Open WebUI"; return; }
 
-  if docker ps -a --format '{{.Names}}' | grep -qx open-webui; then
-    run docker start open-webui 2>/dev/null || true
-  else
-    run docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway \
-      -v "$EXTERNAL_AI/open-webui:/app/backend/data" \
-      -e OLLAMA_BASE_URL="http://host.docker.internal:11434" \
-      --name open-webui --restart unless-stopped ghcr.io/open-webui/open-webui:main
+  local webui_data; webui_data=$(open_webui_data_dir)
+  run mkdir -p "$webui_data"
+  if ssd_is_exfat; then
+    info "Open WebUI chat DB → internal Mac (ExFAT SSD breaks SQLite)"
   fi
+  if docker ps -a --format '{{.Names}}' | grep -qx open-webui; then
+    run docker rm -f open-webui 2>/dev/null || true
+  fi
+  run docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway \
+    -v "$webui_data:/app/backend/data" \
+    -e OLLAMA_BASE_URL="http://host.docker.internal:11434" \
+    --name open-webui --restart unless-stopped ghcr.io/open-webui/open-webui:main
   ok "Open WebUI → http://localhost:8080"
 }
 
@@ -755,6 +994,9 @@ ssd_models:
   diffusion_models: diffusion_models
   ipadapter: ipadapter
   clip_vision: clip_vision
+  text_encoders: text_encoders
+  insightface: insightface
+  sam2: sam2
 YAML
     ok "ComfyUI models → extra_model_paths.yaml (ExFAT — no symlink)"
     return 0
@@ -776,6 +1018,29 @@ comfyui_setup_complete() {
   return 0
 }
 
+sync_comfyui_tier_nodes() {
+  local root="$EXTERNAL_AI/comfyui/ComfyUI"
+  local venv nodes="$root/custom_nodes" entry min_tier url folder purpose added=0
+  venv=$(comfyui_venv_dir)
+  [[ -d "$root/.git" ]] || return 0
+  comfyui_venv_usable "$venv" || return 0
+  run mkdir -p "$nodes"
+  while IFS= read -r entry; do
+    IFS='|' read -r min_tier url folder purpose <<<"$entry"
+    [[ -d "$nodes/$folder" ]] && continue
+    info "Installing missing node for $(tier_toupper "$INSTALL_TIER"): $folder ($purpose)"
+    run git clone --depth 1 "$url" "$nodes/$folder" 2>/dev/null || warn "Node $folder failed"
+    if [[ -f "$nodes/$folder/requirements.txt" ]] && comfyui_venv_usable "$venv"; then
+      # shellcheck source=/dev/null
+      source "$venv/bin/activate"
+      run pip install -q -r "$nodes/$folder/requirements.txt" 2>/dev/null || true
+    fi
+    added=$((added + 1))
+  done < <(get_models_for_tier "$INSTALL_TIER" nodes)
+  [[ "$added" -gt 0 ]] && ok "Added $added ComfyUI node(s) for $(tier_toupper "$INSTALL_TIER")"
+  return 0
+}
+
 install_comfyui() {
   [[ "$SKIP_COMFY" == true ]] && return
   local root="$EXTERNAL_AI/comfyui/ComfyUI"
@@ -785,7 +1050,8 @@ install_comfyui() {
     setup_comfyui_models "$root"
   fi
   if comfyui_setup_complete; then
-    ok "ComfyUI already set up — skipping git/pip/nodes (avoids Mac SSD popups on re-run)"
+    sync_comfyui_tier_nodes
+    ok "ComfyUI already set up — verified + synced tier nodes (skipped git/pip)"
     return
   fi
   step "ComfyUI + editing nodes (tier: $(tier_toupper "$INSTALL_TIER"))"
@@ -960,6 +1226,86 @@ $(get_models_for_tier "$INSTALL_TIER" hf | while IFS='|' read -r _ _ _ _ _ l; do
 
 Add more via ComfyUI Manager → filter "realistic" / "photo" on Civitai.
 DOC
+
+  if [[ "${UNFILTERED_PACK:-false}" == true ]]; then
+    cat > "$EXTERNAL_AI/docs/UNFILTERED_PACK.txt" <<DOC
+UNFILTERED MODELS PACK (~$(unfiltered_pack_gb 2>/dev/null || echo 150) GB add-on)
+═══════════════════════════════════════════════════════════════
+
+Installed with this run. Best on M4 16GB — run ONE heavy model at a time.
+
+QWEN IMAGE EDIT (ComfyUI → diffusion_models + text_encoders + vae + loras)
+  • qwen_image_edit_2509_fp8 + 2511_fp8mixed — mask-free photo edits
+  • Lightning 4-step LoRA for faster edits
+  • Relight, Anything2Real, Fusion, angles, white-to-scene LoRAs
+  • qwen_image_fp8 — generation companion model
+
+FLUX ADVANCED EDITING
+  • flux1-dev-kontext_fp8_scaled — context-aware edits
+  • FLUX.1-Fill-dev_fp8 — inpaint/outpaint regions
+  • clip_l + t5xxl_fp8 text encoders (required for Fill/Kontext)
+  • Flux IP-Adapter v2
+
+FACE / POSE / MASK
+  • InstantID ControlNet + ip-adapter + antelopev2 (insightface/)
+  • SAM2 hiera large (sam2/) — AI masking
+  • OpenPose XL2 + DWPose ONNX — pose-guided edits
+
+MLX VISION (LM Studio → $EXTERNAL_AI/lm-studio-models)
+  • Qwen2.5-VL, Gemma 3 12B, Llama 3.2 Vision — describe photos, write edit prompts
+
+SENSITIVE / NSFW WEIGHTS (3 optional photoreal UNet shards — install never blocks on these)
+  • spicy-realism-v30-unet, into-realism-v30-unet, intorealism-v21-unet
+  • Saved to: comfyui-models/diffusion_models/
+  • Pair with your SDXL checkpoints (RealVisXL, CyberRealistic, etc.) in ComfyUI
+
+ONE-TIME HUGGINGFACE SETUP (free account, no API billing):
+  1. huggingface.co/settings/content-preferences → enable sensitive content
+  2. Settings → Access Tokens → New token (Read only)
+  3. Paste token in installer HuggingFace box BEFORE install, OR after install run:
+       $EXTERNAL_AI/scripts/fetch-sensitive-models.sh
+
+If they skip during install, everything else still works. Re-run the script anytime.
+DOC
+    cat > "$EXTERNAL_AI/docs/HUGGINGFACE_SENSITIVE.txt" <<'DOC'
+HUGGINGFACE — 3 OPTIONAL REALISM WEIGHTS (Unfiltered Pack)
+═══════════════════════════════════════════════════════════
+
+These are optional. Your studio works without them. Install never blocks on them.
+
+WHAT THEY ARE
+  • spicy-realism-v30-unet.safetensors
+  • into-realism-v30-unet.safetensors
+  • intorealism-v21-unet.safetensors
+  Saved to: comfyui-models/diffusion_models/
+
+WHEN TO DO THIS
+  • BEFORE INSTALL — paste HF Read token in installer → best first-pass download
+  • AFTER INSTALL — run scripts/fetch-sensitive-models.sh on your SSD
+
+SETUP (manual browser steps, ~2 minutes, free account)
+  1. Sign up:  https://huggingface.co/join
+  2. Log in → Settings → Content preferences → enable sensitive content
+  3. Settings → Access Tokens → New token → Read only → copy (starts with hf_)
+  4. Paste token in installer GUI (orange HuggingFace box) OR in Terminal:
+       export HF_TOKEN=hf_your_token_here
+       bash LOCAL_AI_GEN/scripts/fetch-sensitive-models.sh
+
+GUI INSTALLER
+  • Check "Unfiltered Models Pack"
+  • Click "HF setup guide (3 models)" or "Setup guide" — step-by-step assistant
+  • Opens each page for you; you complete the clicks in the browser
+
+NO API KEY. No billing. Read token is not an OpenAI-style API key.
+
+TROUBLESHOOTING
+  • HTTP 401 — add Read token (step 3)
+  • HTTP 403 — enable sensitive content in Content preferences (step 2) while logged in
+  • Re-run fetch script anytime — skips files you already have
+DOC
+    ok "Wrote docs/HUGGINGFACE_SENSITIVE.txt"
+    ok "Wrote docs/UNFILTERED_PACK.txt"
+  fi
 }
 
 write_launch_helpers() {
@@ -982,23 +1328,59 @@ open_diffusionbee() {
   open "${LOCAL_AI_ROOT}/Applications/DiffusionBee.app" 2>/dev/null || true
 }
 
+comfyui_alert() {
+  osascript -e "display alert \"ComfyUI\" message \"$1\"" 2>/dev/null || true
+}
+
 start_comfyui() {
   [[ -d "${COMFYUI_ROOT:-}" && -f "${COMFYUI_VENV:-}/bin/activate" ]] || return 0
   cd "$COMFYUI_ROOT"
   # shellcheck source=/dev/null
   source "$COMFYUI_VENV/bin/activate"
-  pgrep -f "python.*main.py" &>/dev/null || \
+  if ! pgrep -f "python.*main.py" &>/dev/null; then
+    osascript -e 'display notification "First launch can take 1–3 minutes…" with title "Starting ComfyUI"' 2>/dev/null || true
     python main.py --listen 127.0.0.1 --port 8188 &>/dev/null &
-  sleep 3
-  open "http://127.0.0.1:8188"
+  fi
+  local i code
+  for i in $(seq 1 90); do
+    code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8188/ 2>/dev/null || echo "000")
+    [[ "$code" == "200" ]] && { open "http://127.0.0.1:8188"; return 0; }
+    sleep 2
+  done
+  comfyui_alert "ComfyUI is still starting (custom nodes on ExFAT can take a few minutes). Wait, then open http://127.0.0.1:8188 or click the shortcut again."
+}
+
+webui_alert() {
+  osascript -e "display alert \"Open WebUI\" message \"$1\"" 2>/dev/null || true
 }
 
 start_open_webui() {
   ensure_ollama
-  command -v docker &>/dev/null || return 0
-  docker ps -a --format '{{.Names}}' | grep -qx open-webui || return 0
-  docker start open-webui &>/dev/null
-  sleep 2
+  if ! command -v docker &>/dev/null; then
+    webui_alert "Docker is not installed. Open WebUI needs Docker Desktop (~4 GB on Mac internal). Use LM Studio for chat, or re-run the installer."
+    return 0
+  fi
+  if ! docker info &>/dev/null; then
+    open -a Docker 2>/dev/null || true
+    osascript -e 'display notification "Starting Docker Desktop…" with title "Open WebUI"' 2>/dev/null || true
+    for _ in {1..30}; do docker info &>/dev/null && break; sleep 2; done
+  fi
+  if ! docker info &>/dev/null; then
+    webui_alert "Could not connect to Docker. Open Docker Desktop from Applications, wait until the whale icon shows Running in the menu bar, then try again."
+    return 0
+  fi
+  local webui_data="${OPEN_WEBUI_DATA:-${LOCAL_AI_ROOT}/open-webui}"
+  mkdir -p "$webui_data" 2>/dev/null || true
+  if ! docker ps -a --format '{{.Names}}' | grep -qx open-webui; then
+    docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway \
+      -v "${webui_data}:/app/backend/data" \
+      -e OLLAMA_BASE_URL="http://host.docker.internal:11434" \
+      --name open-webui --restart unless-stopped ghcr.io/open-webui/open-webui:main \
+      || { webui_alert "Failed to start Open WebUI container. Check Docker Desktop is running and try again."; return 0; }
+  else
+    docker start open-webui &>/dev/null || true
+  fi
+  sleep 3
   open "http://localhost:8080"
 }
 
@@ -1306,6 +1688,20 @@ finale() {
     grep -E '"ssd_gb"|"hf_models_' "$EXTERNAL_AI/.install-stats.json" 2>/dev/null | tee -a "$LOG_FILE" || true
   fi
   echo "  Editing:  $EXTERNAL_AI/docs/PHOTO_EDITING.txt" | tee -a "$LOG_FILE"
+  if [[ "${UNFILTERED_PACK:-false}" == true && -f "$EXTERNAL_AI/.sensitive-models.tsv" ]]; then
+    local sens_miss=0 entry subdir file _ _ _
+    while IFS= read -r entry; do
+      IFS='|' read -r subdir file _ _ _ <<<"$entry"
+      [[ -f "$EXTERNAL_AI/comfyui-models/$subdir/$file" ]] \
+        && [[ "$(audit_local_bytes "$EXTERNAL_AI/comfyui-models/$subdir/$file")" -gt 50000000 ]] \
+        && continue
+      sens_miss=$((sens_miss + 1))
+    done < <(get_unfiltered_pack_sensitive_models)
+    if [[ "$sens_miss" -gt 0 ]]; then
+      warn "Optional: $sens_miss sensitive realism weight(s) skipped — studio is complete without them" | tee -a "$LOG_FILE"
+      echo "  Retry:    $EXTERNAL_AI/scripts/fetch-sensitive-models.sh" | tee -a "$LOG_FILE"
+    fi
+  fi
   echo "  Log:      $LOG_FILE" | tee -a "$LOG_FILE"
   if [[ "$DRY_RUN" != true ]]; then
     echo "$EXTERNAL_AI" >"$INSTALL_COMPLETE_FILE"
@@ -1351,12 +1747,19 @@ main() {
     exit 0
   fi
 
+  if [[ "${UNFILTERED_PACK_ONLY:-false}" == true && -z "$INSTALL_TIER" ]]; then
+    INSTALL_TIER="ultimate"
+    info "Pack-only mode — defaulting tier label to ULTIMATE for docs/audit"
+  fi
+
   if [[ "$NO_GUI" == true ]]; then
     [[ -n "$INSTALL_TIER" ]] || die "--tier required with --no-gui"
     [[ -n "$FORCED_SSD" ]] || die "--ssd required with --no-gui"
     [[ $(tier_level "$INSTALL_TIER") -gt 0 ]] || die "Invalid tier: $INSTALL_TIER"
     SSD_VOLUME="$FORCED_SSD"
-    ok "Non-interactive install — tier: $(tier_toupper "$INSTALL_TIER"), SSD: $SSD_VOLUME"
+    local pack_note=""
+    [[ "${UNFILTERED_PACK:-false}" == true ]] && pack_note=" + Unfiltered Pack"
+    ok "Non-interactive install — tier: $(tier_toupper "$INSTALL_TIER")${pack_note}, SSD: $SSD_VOLUME"
   else
     pick_install_tier
     [[ $(tier_level "$INSTALL_TIER") -gt 0 ]] || die "Invalid tier: $INSTALL_TIER"
@@ -1378,8 +1781,18 @@ main() {
   fi
   setup_environment
   if [[ "${MODELS_ONLY:-false}" == true ]]; then
-    info "Models-only mode — skipping ComfyUI/git/pip (no SSD permission popups)"
-    download_hf_models
+    if [[ "${SENSITIVE_MODELS_ONLY:-false}" == true ]]; then
+      info "Sensitive models only — fetching 3 optional realism weights"
+      write_sensitive_models_support
+      download_sensitive_pack_models
+    elif [[ "${UNFILTERED_PACK_ONLY:-false}" == true ]]; then
+      info "Unfiltered pack only — skipping tier/base ComfyUI models"
+      download_unfiltered_pack
+    else
+      info "Models-only mode — skipping ComfyUI/git/pip (no SSD permission popups)"
+      download_hf_models
+      [[ "${UNFILTERED_PACK:-false}" == true ]] && download_unfiltered_pack
+    fi
     write_docs
     report_size
     finale
@@ -1392,6 +1805,7 @@ main() {
   install_open_webui
   install_comfyui
   download_hf_models
+  [[ "${UNFILTERED_PACK:-false}" == true ]] && download_unfiltered_pack
   write_docs
   create_launchers
   report_size

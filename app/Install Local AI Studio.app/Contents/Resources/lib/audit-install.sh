@@ -117,7 +117,9 @@ audit_install_status() {
 
   echo ""
   ok "ComfyUI models: ${hf_ok} present, ${hf_missing} missing, ${hf_partial} partial"
-  [[ "$hf_stale" -gt 0 ]] && warn "${hf_stale} model(s) may have upstream updates (use --refresh-hf to re-fetch larger files)"
+  if [[ "$hf_stale" -gt 0 ]]; then
+    warn "${hf_stale} model(s) may have upstream updates (use --refresh-hf to re-fetch larger files)"
+  fi
   ok "Ollama models: ${ollama_ok} present, ${ollama_missing} missing (pull refreshes existing on install)"
   ok "GUI apps on SSD: ${apps_ok}/2 present"
   [[ "$comfy_ok" == true ]] && ok "ComfyUI repo: present" || warn "ComfyUI repo: not set up yet"
@@ -130,5 +132,73 @@ audit_install_status() {
   else
     info "Install will fetch ${todo} missing/incomplete item(s), then check Ollama for updates"
   fi
+
+  if [[ "${UNFILTERED_PACK:-false}" == true ]]; then
+    audit_unfiltered_pack_status || true
+  fi
   echo ""
+}
+
+audit_unfiltered_pack_status() {
+  [[ -n "${EXTERNAL_AI:-}" && -d "$EXTERNAL_AI" ]] || return 0
+  step "Unfiltered Models Pack status (~$(unfiltered_pack_gb 2>/dev/null || echo 150) GB)"
+
+  local entry dest url label local_sz remote_sz
+  local pack_ok=0 pack_missing=0 pack_partial=0 pack_stale=0
+
+  while IFS= read -r entry; do
+    IFS='|' read -r subdir file path _ label <<<"$entry"
+    dest="$EXTERNAL_AI/comfyui-models/$subdir/$file"
+    url="https://huggingface.co/$path"
+    if [[ ! -f "$dest" ]]; then
+      pack_missing=$((pack_missing + 1))
+      info "Pack missing: $label"
+      continue
+    fi
+    local_sz=$(audit_local_bytes "$dest")
+    if [[ "${local_sz:-0}" -lt 50000 ]]; then
+      pack_partial=$((pack_partial + 1))
+      warn "Pack partial: $label (${local_sz} bytes)"
+      continue
+    fi
+    pack_ok=$((pack_ok + 1))
+    remote_sz=$(audit_remote_bytes "$url")
+    if [[ -n "$remote_sz" && "$remote_sz" -gt "$local_sz" ]]; then
+      pack_stale=$((pack_stale + 1))
+    fi
+  done < <(get_unfiltered_pack_models)
+
+  local mlx_ok=0 mlx_missing=0 repo
+  while IFS= read -r entry; do
+    IFS='|' read -r repo _ label <<<"$entry"
+    if [[ -f "$EXTERNAL_AI/lm-studio-models/$repo/config.json" ]]; then
+      mlx_ok=$((mlx_ok + 1))
+    else
+      mlx_missing=$((mlx_missing + 1))
+      info "Pack MLX missing: $label"
+    fi
+  done < <(get_unfiltered_pack_mlx_models)
+
+  local sens_ok=0 sens_missing=0
+  while IFS= read -r entry; do
+    IFS='|' read -r subdir file _ _ label <<<"$entry"
+    dest="$EXTERNAL_AI/comfyui-models/$subdir/$file"
+    if [[ -f "$dest" ]] && [[ "$(audit_local_bytes "$dest")" -gt 50000000 ]]; then
+      sens_ok=$((sens_ok + 1))
+    else
+      sens_missing=$((sens_missing + 1))
+      info "Sensitive optional missing: $label"
+    fi
+  done < <(get_unfiltered_pack_sensitive_models)
+
+  ok "Pack ComfyUI/HF: ${pack_ok} present, ${pack_missing} missing, ${pack_partial} partial"
+  ok "Pack MLX (LM Studio): ${mlx_ok} present, ${mlx_missing} missing"
+  ok "Sensitive realism (optional): ${sens_ok} present, ${sens_missing} missing"
+  if [[ "$sens_missing" -gt 0 ]]; then
+    info "Sensitive gaps do not block the studio — run scripts/fetch-sensitive-models.sh"
+  fi
+  if [[ "$pack_stale" -gt 0 ]]; then
+    warn "${pack_stale} pack file(s) may have upstream updates"
+  fi
+  return 0
 }
