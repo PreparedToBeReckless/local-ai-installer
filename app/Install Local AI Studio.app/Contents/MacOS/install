@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Open Terminal wizard — no AppleScript, no System Events permission needed
+set -euo pipefail
+
+APP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+RES="$APP_ROOT/Resources"
+WIZARD_CMD="$RES/Start Local AI Install.command"
+
+if [[ ! -x "$RES/installer_wizard.sh" ]]; then
+  # Last resort only — display alert does not need System Events on most Macs
+  /usr/bin/osascript -e 'display alert "Installer Error" message "Files missing from app bundle. Re-download the DMG."' 2>/dev/null || true
+  exit 1
+fi
+
+# open .command file — user sees Terminal with full text UI, no Automation popup
+/usr/bin/open "$WIZARD_CMD"

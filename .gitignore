@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+
+# Build output (rebuild with ./build-dmg.sh)
+dist/
+
+# Icon intermediates (committed: icon-512.png, icon-1024.png, AppIcon.icns)
+assets/AppIcon.iconset/
+assets/icon-source.jpg
+
+# Local test / scratch
+*.log
+/tmp/
+.local-ai-studio-installer.json
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*~

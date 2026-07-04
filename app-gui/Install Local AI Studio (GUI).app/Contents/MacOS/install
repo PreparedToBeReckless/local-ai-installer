@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# GUI launcher — must run native arm64 (Rosetta x86_64 breaks /usr/bin/python3 + Tk text).
+set -euo pipefail
+RES="$(cd "$(dirname "$0")/../Resources" && pwd)"
+GUI="$RES/installer_gui.py"
+WIZARD="$RES/installer_wizard.sh"
+PY="/usr/bin/python3"
+CLI_PY="/Library/Developer/CommandLineTools/usr/bin/python3"
+
+cd "$RES"
+export TK_SILENCE_DEPRECATION=1
+export PYTHONNOUSERSITE=1
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+
+pick_python() {
+  local candidate
+  for candidate in "$CLI_PY" "$PY"; do
+    [[ -x "$candidate" ]] || continue
+    if arch -arm64 "$candidate" -c "import tkinter" 2>/dev/null; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [[ -f "$GUI" ]] && PY_OK="$(pick_python)"; then
+  exec arch -arm64 "$PY_OK" "$GUI"
+fi
+
+# No working Tk — fall back to terminal wizard (always shows text)
+exec arch -arm64 /bin/bash "$WIZARD"
