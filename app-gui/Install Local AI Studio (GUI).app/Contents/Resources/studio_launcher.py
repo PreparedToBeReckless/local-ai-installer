@@ -60,7 +60,7 @@ class StudioLauncher(tk.Tk):
         self.title("AI Studio Launcher")
         self.configure(bg=BG)
         self.resizable(False, False)
-        self._center(420, 560)
+        self._center(420, 600)
 
         tk.Label(
             self, text="AI Studio Launcher", font=("Helvetica", 18, "bold"),
@@ -80,6 +80,7 @@ class StudioLauncher(tk.Tk):
         card.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
 
         buttons = [
+            ("Free RAM for AI", "free_ram_for_ai", "#d29922", "Quit background apps — keeps Finder, then open one AI app"),
             ("Launch All", "launch_all", ACCENT, "Start everything (Ollama + apps + browsers)"),
             ("LM Studio", "open_lm_studio", ACCENT2, "Describe photos, vision chat, MLX models"),
             ("DiffusionBee", "open_diffusionbee", ACCENT2, "Quick realistic image generation"),

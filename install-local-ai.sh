@@ -1510,6 +1510,12 @@ launch_all() {
   open_diffusionbee
   start_comfyui
 }
+
+free_ram_for_ai() {
+  local script="${LOCAL_AI_ROOT}/scripts/free-ram-for-ai.sh"
+  [[ -f "$script" ]] || { comfyui_alert "Missing $script — re-run installer with --launchers-only"; return 1; }
+  bash "$script"
+}
 HELPERS
   chmod +x "$EXTERNAL_AI/scripts/launch-helpers.sh"
 }
@@ -1551,6 +1557,7 @@ create_studio_hub() {
   run mkdir -p "$hub"
   rm -f "$hub/ComfyUI (browser).command" "$hub/Open WebUI (browser).command" 2>/dev/null || true
 
+  write_hub_command "$hub/Free RAM for AI.command" "free_ram_for_ai"
   write_hub_command "$hub/Launch All.command" "launch_all"
   write_hub_command "$hub/LM Studio.command" "open_lm_studio"
   write_hub_command "$hub/DiffusionBee.command" "open_diffusionbee"
@@ -1564,6 +1571,7 @@ AI STUDIO APPS — everything in one folder
 
 Double-click any shortcut below (or use "AI Studio Launcher" on your Desktop).
 
+  Free RAM for AI.command     → quit browsers/Docker/chat/menu-bar apps (keeps Finder)
   Launch All.command          → starts Ollama + all apps + browser tabs
   LM Studio.command           → photo analysis, vision chat
   DiffusionBee.command        → quick realistic image generation
@@ -1579,6 +1587,10 @@ Models list:         $EXTERNAL_AI/docs/MODELS_INSTALLED.txt
 16GB RAM: run one heavy app at a time (don't stack Flux + Docker + ComfyUI).
 README
 
+  if [[ -f "$SCRIPT_DIR/scripts/free-ram-for-ai.sh" ]]; then
+    run cp "$SCRIPT_DIR/scripts/free-ram-for-ai.sh" "$EXTERNAL_AI/scripts/free-ram-for-ai.sh"
+    chmod +x "$EXTERNAL_AI/scripts/free-ram-for-ai.sh"
+  fi
   if [[ -f "$SCRIPT_DIR/studio_launcher.py" ]]; then
     run cp "$SCRIPT_DIR/studio_launcher.py" "$EXTERNAL_AI/scripts/studio_launcher.py"
     chmod +x "$EXTERNAL_AI/scripts/studio_launcher.py"

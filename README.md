@@ -17,7 +17,7 @@ Built and dogfooded on an **M4 MacBook Air 16GB** + portable SSD. Pick a tier, c
 ![Release](https://img.shields.io/github/v/release/PreparedToBeReckless/local-ai-installer?label=release)
 ![Tier](https://img.shields.io/badge/SSD-55–150%20GB-orange)
 
-**Latest: [v1.1.6](https://github.com/PreparedToBeReckless/local-ai-installer/releases/tag/v1.1.6)** — 16 GB ComfyUI memory limits, Z-Image NVFP4/FP8, [RAM & model guide](docs/RAM_AND_MODELS.md) (8–64 GB).
+**Latest: [v1.1.7](https://github.com/PreparedToBeReckless/local-ai-installer/releases/tag/v1.1.7)** — **Free RAM for AI** shortcut, 16 GB ComfyUI limits, [RAM & model guide](docs/RAM_AND_MODELS.md).
 
 ---
 
@@ -358,6 +358,10 @@ No code signing — fine for personal use and GitHub hobby releases.
 ---
 
 ## Changelog
+
+### v1.1.7 (July 2026)
+
+- **Free RAM for AI** — hub shortcut + launcher button quits browsers, Docker, chat/menu-bar apps; keeps Finder
 
 ### v1.1.6 (July 2026)
 

@@ -164,6 +164,14 @@ python main.py --listen 127.0.0.1 --port 8188 \
 
 ---
 
+## Free RAM shortcut
+
+**AI Studio Apps → Free RAM for AI.command** (or **AI Studio Launcher → Free RAM for AI**)
+
+Quits browsers, Docker, chat apps, menu-bar helpers, and any running ComfyUI/Ollama/WebUI. **Keeps Finder.** Run this before a heavy ComfyUI session on 16 GB Macs.
+
+---
+
 ## Quick “what should I run?”
 
 | Goal | 16 GB | 32 GB |
