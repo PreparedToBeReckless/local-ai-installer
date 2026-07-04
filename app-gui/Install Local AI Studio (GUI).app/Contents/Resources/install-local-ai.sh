@@ -1133,6 +1133,11 @@ write_docs() {
   step "Writing guides"
   local tier_lvl; tier_lvl=$(tier_level "$INSTALL_TIER")
 
+  if [[ -f "$SCRIPT_DIR/docs/RAM_AND_MODELS.md" ]]; then
+    cp "$SCRIPT_DIR/docs/RAM_AND_MODELS.md" "$EXTERNAL_AI/docs/RAM_AND_MODELS.txt"
+    ok "RAM & model guide → docs/RAM_AND_MODELS.txt"
+  fi
+
   cat > "$EXTERNAL_AI/docs/PHOTO_EDITING.txt" <<DOC
 PHOTO EDITING QUICK START (tier: $(tier_toupper "$INSTALL_TIER"))
 ═══════════════════════════════════════════════════
@@ -1186,6 +1191,26 @@ Or Terminal (saves token; browser license accept still required):
 Re-run INSTALL after both steps — only missing files download.
 
 Your studio works without SD 3.5 — 25/26 ComfyUI models are already installed.
+DOC
+
+  cat > "$EXTERNAL_AI/docs/16GB_RAM.txt" <<'DOC'
+16 GB RAM — QUICK CHECKLIST
+═══════════════════════════
+
+Full guide for 8–64 GB: docs/RAM_AND_MODELS.txt
+
+AUTO (ComfyUI from AI Studio shortcuts)
+  --cache-none --reserve-vram 2.5 --fp8_e4m3fn-unet --fp8_e4m3fn-text-enc
+
+DO
+  • One heavy app at a time (ComfyUI OR Docker OR LM Studio)
+  • Z-Image loaders: nvfp4 + qwen_3_4b_fp8_mixed + ae.safetensors
+  • Flux Schnell FP8, RealVisXL SDXL, or DiffusionBee for quick gens
+
+DON'T
+  • Launch All (16 GB mode starts ComfyUI only — by design)
+  • z_image_turbo_bf16 + qwen_3_4b BF16 (~20 GB → freeze)
+  • Unfiltered Pack Qwen Image Edit while other apps are open
 DOC
 
   cat > "$EXTERNAL_AI/docs/WHICH_APP.txt" <<'DOC'
@@ -1382,6 +1407,18 @@ stop_comfyui() {
   [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null || true
 }
 
+system_ram_gb() {
+  echo $(( $(sysctl -n hw.memsize 2>/dev/null || echo 17179869184) / 1073741824 ))
+}
+
+# 16 GB Macs: keep ~2.5 GB free for macOS, unload models aggressively, run weights in FP8.
+comfyui_ram_args() {
+  local ram_gb
+  ram_gb=$(system_ram_gb)
+  [[ "$ram_gb" -le 18 ]] || return 0
+  echo --cache-none --reserve-vram 2.5 --fp8_e4m3fn-unet --fp8_e4m3fn-text-enc --disable-smart-memory
+}
+
 start_comfyui() {
   [[ -d "${COMFYUI_ROOT:-}" && -f "${COMFYUI_VENV:-}/bin/activate" ]] || return 0
   cd "$COMFYUI_ROOT"
@@ -1396,8 +1433,17 @@ start_comfyui() {
     rm -f "$restart_flag"
   fi
   if ! lsof -ti :8188 &>/dev/null; then
-    osascript -e 'display notification "First launch can take 1–3 minutes…" with title "Starting ComfyUI"' 2>/dev/null || true
-    python main.py --listen 127.0.0.1 --port 8188 &>/dev/null &
+    local ram_gb msg extra_args=()
+    ram_gb=$(system_ram_gb)
+    if [[ "$ram_gb" -le 18 ]]; then
+      msg='16GB RAM mode: ComfyUI memory limits on. Close other apps; use Z-Image NVFP4/FP8 in loaders (see docs/16GB_RAM.txt).'
+    else
+      msg='First launch can take 1–3 minutes…'
+    fi
+    osascript -e "display notification \"$msg\" with title \"Starting ComfyUI\"" 2>/dev/null || true
+    # shellcheck disable=SC2207
+    extra_args=($(comfyui_ram_args))
+    python main.py --listen 127.0.0.1 --port 8188 "${extra_args[@]}" &>/dev/null &
   fi
   local i code
   for i in $(seq 1 90); do
@@ -1451,6 +1497,13 @@ open_apps_folder() {
 }
 
 launch_all() {
+  local ram_gb
+  ram_gb=$(system_ram_gb)
+  if [[ "$ram_gb" -le 18 ]]; then
+    osascript -e 'display notification "16GB mode: starting ComfyUI only — don’t stack Docker + LM Studio + ComfyUI." with title "Launch All"' 2>/dev/null || true
+    start_comfyui
+    return 0
+  fi
   ensure_ollama
   start_open_webui
   open_lm_studio

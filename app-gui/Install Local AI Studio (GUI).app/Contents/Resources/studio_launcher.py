@@ -60,7 +60,7 @@ class StudioLauncher(tk.Tk):
         self.title("AI Studio Launcher")
         self.configure(bg=BG)
         self.resizable(False, False)
-        self._center(420, 520)
+        self._center(420, 560)
 
         tk.Label(
             self, text="AI Studio Launcher", font=("Helvetica", 18, "bold"),
@@ -88,6 +88,7 @@ class StudioLauncher(tk.Tk):
             ("Draw Things (App Store)", "open_draw_things", TEXT_DIM, "Optional native editor — Mac App Store"),
             ("Open Apps Folder", "open_apps_folder", TEXT_DIM, "Finder folder with all shortcuts"),
             ("Photo Editing Guide", "open_photo_guide", TEXT_DIM, "docs/PHOTO_EDITING.txt"),
+            ("RAM & Models Guide", "open_ram_guide", TEXT_DIM, "8–64 GB: which weights to use"),
         ]
         for label, action, color, tip in buttons:
             self._btn(card, label, action, color, tip)
@@ -127,6 +128,13 @@ class StudioLauncher(tk.Tk):
             return
         if action == "open_photo_guide":
             guide = os.path.join(self.env.get("LOCAL_AI_ROOT", ""), "docs", "PHOTO_EDITING.txt")
+            if os.path.isfile(guide):
+                subprocess.run(["open", guide], check=False)
+            else:
+                messagebox.showwarning("Not found", guide or "LOCAL_AI_ROOT not set")
+            return
+        if action == "open_ram_guide":
+            guide = os.path.join(self.env.get("LOCAL_AI_ROOT", ""), "docs", "RAM_AND_MODELS.txt")
             if os.path.isfile(guide):
                 subprocess.run(["open", guide], check=False)
             else:

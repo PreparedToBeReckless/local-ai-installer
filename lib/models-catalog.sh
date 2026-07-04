@@ -31,7 +31,7 @@ tier_name() {
 
 tier_budget_gb() {
   case "$1" in
-    1) echo 75 ;;
+    1) echo 65 ;;
     2) echo 110 ;;
     3) echo 135 ;;
     4) echo 150 ;;
@@ -41,7 +41,7 @@ tier_budget_gb() {
 
 tier_blurb() {
   case "$1" in
-    1) echo "~75 GB SSD — Fast portraits, Flux + Z-Image Turbo + SDXL" ;;
+    1) echo "~65 GB SSD — Fast portraits, Flux + Z-Image Turbo (16GB-safe) + SDXL" ;;
     2) echo "~110 GB SSD — Recommended for M4 16GB. Full editing starter kit" ;;
     3) echo "~135 GB SSD — Pro photo editing: inpaint, relight, face swap, SD3.5" ;;
     4) echo "~150 GB SSD — Complete photoreal catalog + room to grow" ;;
@@ -78,8 +78,8 @@ HF_CATALOG=(
   "starter|checkpoints|CyberRealistic_V7.safetensors|cyberdelia/CyberRealistic/resolve/main/CyberRealistic_V7.0_FP16.safetensors|6500|CyberRealistic V7 SDXL"
   "starter|checkpoints|RealVisXL_V5.0_fp16.safetensors|SG161222/RealVisXL_V5.0/resolve/main/RealVisXL_V5.0_fp16.safetensors|6940|RealVisXL V5 — flagship photoreal SDXL"
   "starter|diffusion_models|flux1-schnell-fp8-e4m3fn.safetensors|Kijai/flux-fp8/resolve/main/flux1-schnell-fp8-e4m3fn.safetensors|11300|FLUX.1 Schnell FP8 — fast realistic"
-  "starter|diffusion_models|z_image_turbo_bf16.safetensors|Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors|11740|Z-Image Turbo BF16 — ComfyUI blueprint"
-  "starter|text_encoders|qwen_3_4b.safetensors|Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors|7672|Z-Image Qwen 3 4B text encoder"
+  "starter|diffusion_models|z_image_turbo_nvfp4.safetensors|Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_nvfp4.safetensors|4300|Z-Image Turbo NVFP4 — 16GB-friendly"
+  "starter|text_encoders|qwen_3_4b_fp8_mixed.safetensors|Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors|5371|Z-Image Qwen 3 4B FP8 — 16GB-friendly"
   "starter|vae|ae.safetensors|Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors|320|Z-Image VAE (ae)"
   "starter|vae|flux-vae-bf16.safetensors|Kijai/flux-fp8/resolve/main/flux-vae-bf16.safetensors|160|FLUX VAE"
   "starter|upscale_models|4x-UltraSharp.safetensors|Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors|64|4x-UltraSharp photo upscaler"

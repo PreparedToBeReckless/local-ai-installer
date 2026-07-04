@@ -17,7 +17,7 @@ Built and dogfooded on an **M4 MacBook Air 16GB** + portable SSD. Pick a tier, c
 ![Release](https://img.shields.io/github/v/release/PreparedToBeReckless/local-ai-installer?label=release)
 ![Tier](https://img.shields.io/badge/SSD-55–150%20GB-orange)
 
-**Latest: [v1.1.4](https://github.com/PreparedToBeReckless/local-ai-installer/releases/tag/v1.1.4)** — **AI Studio Web** native localhost viewer (built-in WebKit, no Chrome required).
+**Latest: [v1.1.6](https://github.com/PreparedToBeReckless/local-ai-installer/releases/tag/v1.1.6)** — 16 GB ComfyUI memory limits, Z-Image NVFP4/FP8, [RAM & model guide](docs/RAM_AND_MODELS.md) (8–64 GB).
 
 ---
 
@@ -49,6 +49,12 @@ Built and dogfooded on an **M4 MacBook Air 16GB** + portable SSD. Pick a tier, c
 | **AI Studio Web** | Built-in localhost viewer (macOS WebKit) for ComfyUI & Open WebUI — no Chrome install, default browser unchanged |
 
 > **Ollama vs ComfyUI:** Ollama’s browse list is mostly **coding/chat** LLMs (Codex, Copilot CLI, etc.). This installer does **not** pull those. Image generation lives in **ComfyUI** and **DiffusionBee**. See `LOCAL_AI_GEN/docs/WHICH_APP.txt` after install.
+
+### RAM & which models to use
+
+**[docs/RAM_AND_MODELS.md](docs/RAM_AND_MODELS.md)** — pick weights for **8, 16, 24, 32, 48, or 64 GB** Macs. Copied to your SSD as `LOCAL_AI_GEN/docs/RAM_AND_MODELS.txt` on install. Also in **AI Studio Launcher → RAM & Models Guide**.
+
+On **16 GB**, ComfyUI shortcuts auto-apply memory limits (`--cache-none`, `--reserve-vram 2.5`, FP8 weights). Z-Image uses **NVFP4 + FP8** encoders, not BF16.
 
 ---
 
@@ -352,6 +358,16 @@ No code signing — fine for personal use and GitHub hobby releases.
 ---
 
 ## Changelog
+
+### v1.1.6 (July 2026)
+
+- **RAM guide:** [docs/RAM_AND_MODELS.md](docs/RAM_AND_MODELS.md) — model picks for 8 / 16 / 24 / 32 / 48 / 64 GB Macs
+- **16 GB ComfyUI:** Auto `--cache-none`, `--reserve-vram 2.5`, FP8 unet/text-enc; Launch All starts ComfyUI only
+- **Z-Image:** Catalog uses NVFP4 + FP8 mixed (16 GB-safe) instead of BF16 stack
+
+### v1.1.5 (July 2026)
+
+- Z-Image Turbo models for ComfyUI default blueprint; built-in WebKit viewer
 
 ### v1.1.4 (July 2026)
 

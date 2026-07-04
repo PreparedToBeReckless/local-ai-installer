@@ -41,6 +41,8 @@ bundle_resources() {
   cp "$ROOT/lib/models-catalog.sh" "$res/lib/"
   cp "$ROOT/lib/size-estimates.sh" "$res/lib/"
   cp "$ROOT/lib/audit-install.sh" "$res/lib/"
+  mkdir -p "$res/docs"
+  cp "$ROOT/docs/RAM_AND_MODELS.md" "$res/docs/"
   mkdir -p "$res/assets"
   cp -R "$ROOT/assets/AI-Studio-Web.app" "$res/assets/"
   chmod +x "$res/assets/AI-Studio-Web.app/Contents/MacOS/ai-studio-web"
