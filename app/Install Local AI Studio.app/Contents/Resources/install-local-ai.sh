@@ -910,6 +910,13 @@ download_unfiltered_pack() {
   download_unfiltered_mlx_models
   download_sensitive_pack_models
   ok "Pack core: $ok_count / $count HF files (MLX + sensitive counted separately)"
+  mark_comfyui_restart_needed
+}
+
+mark_comfyui_restart_needed() {
+  local flag="${EXTERNAL_AI:-}/comfyui/ComfyUI/.restart-after-install"
+  [[ -n "${EXTERNAL_AI:-}" && -d "$EXTERNAL_AI/comfyui/ComfyUI" ]] || return 0
+  date -u '+%Y-%m-%dT%H:%M:%SZ' >"$flag"
 }
 
 install_gui_apps() {
@@ -1005,6 +1012,7 @@ ssd_models:
   sam2: sam2
 YAML
     ok "ComfyUI models → extra_model_paths.yaml (ExFAT — no symlink)"
+    mark_comfyui_restart_needed
     return 0
   fi
   [[ -L "$root/models" ]] && return 0
@@ -1338,12 +1346,33 @@ comfyui_alert() {
   osascript -e "display alert \"ComfyUI\" message \"$1\"" 2>/dev/null || true
 }
 
+stop_comfyui() {
+  local pid
+  pid=$(lsof -ti :8188 2>/dev/null | head -1)
+  [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
+  local i
+  for i in $(seq 1 20); do
+    curl -s -o /dev/null http://127.0.0.1:8188/ 2>/dev/null || return 0
+    sleep 1
+  done
+  pid=$(lsof -ti :8188 2>/dev/null | head -1)
+  [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null || true
+}
+
 start_comfyui() {
   [[ -d "${COMFYUI_ROOT:-}" && -f "${COMFYUI_VENV:-}/bin/activate" ]] || return 0
   cd "$COMFYUI_ROOT"
   # shellcheck source=/dev/null
   source "$COMFYUI_VENV/bin/activate"
-  if ! pgrep -f "python.*main.py" &>/dev/null; then
+  local restart_flag="$COMFYUI_ROOT/.restart-after-install"
+  if [[ -f "$restart_flag" ]]; then
+    if lsof -ti :8188 &>/dev/null; then
+      osascript -e 'display notification "Restarting ComfyUI to load new models…" with title "ComfyUI"' 2>/dev/null || true
+      stop_comfyui
+    fi
+    rm -f "$restart_flag"
+  fi
+  if ! lsof -ti :8188 &>/dev/null; then
     osascript -e 'display notification "First launch can take 1–3 minutes…" with title "Starting ComfyUI"' 2>/dev/null || true
     python main.py --listen 127.0.0.1 --port 8188 &>/dev/null &
   fi
