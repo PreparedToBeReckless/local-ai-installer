@@ -17,7 +17,7 @@ Built and dogfooded on an **M4 MacBook Air 16GB** + portable SSD. Pick a tier, c
 ![Release](https://img.shields.io/github/v/release/PreparedToBeReckless/local-ai-installer?label=release)
 ![Tier](https://img.shields.io/badge/SSD-55–150%20GB-orange)
 
-**Latest: [v1.1.0](https://github.com/PreparedToBeReckless/local-ai-installer/releases/tag/v1.1.0)** — toggleable install packages, optional Unfiltered Models Pack, clearer progress & space estimates.
+**Latest: [v1.1.3](https://github.com/PreparedToBeReckless/local-ai-installer/releases/tag/v1.1.3)** — bundled **AI Studio Web** for ComfyUI/Open WebUI shortcuts (isolated window, default browser unchanged).
 
 ---
 
@@ -46,6 +46,7 @@ Built and dogfooded on an **M4 MacBook Air 16GB** + portable SSD. Pick a tier, c
 | **8 Ollama models** | Curated vision/chat helpers — *not* the whole Ollama library |
 | **LM Studio** | Extra MLX chat/vision models (download in-app) |
 | **Desktop launcher** | `AI Studio Launcher.app` + shortcuts folder — one place to open everything |
+| **AI Studio Web** | Lightweight localhost browser window for ComfyUI & Open WebUI — does not change your default browser |
 
 > **Ollama vs ComfyUI:** Ollama’s browse list is mostly **coding/chat** LLMs (Codex, Copilot CLI, etc.). This installer does **not** pull those. Image generation lives in **ComfyUI** and **DiffusionBee**. See `LOCAL_AI_GEN/docs/WHICH_APP.txt` after install.
 
@@ -351,6 +352,16 @@ No code signing — fine for personal use and GitHub hobby releases.
 ---
 
 ## Changelog
+
+### v1.1.3 (July 2026)
+
+- **AI Studio Web:** Bundled mini-app opens ComfyUI (`:8188`) and Open WebUI (`:8080`) in an isolated Chrome/Edge app window (or Safari fallback) — your system default browser stays untouched
+- **Shortcuts:** Hub `.command` files, `Launch All`, and launcher buttons route localhost UIs through AI Studio Web
+- **Note:** [Plash](https://github.com/sindresorhus/Plash) is a website-to-wallpaper utility, not a browser — AI Studio Web fills that role here
+
+### v1.1.2 / v1.1.1
+
+- ComfyUI auto-restart after model/path changes; ExFAT `extra_model_paths.yaml` upgrade for pack `text_encoders`
 
 ### v1.1.0 (July 2026)
 

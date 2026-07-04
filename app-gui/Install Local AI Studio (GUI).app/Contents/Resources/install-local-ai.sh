@@ -944,6 +944,17 @@ Set model folder to: $EXTERNAL_AI/comfyui-models
 Grab: Juggernaut XL, RealVisXL, Flux inside the app.
 DOC"
   info "Draw Things (optional): see docs/DRAW_THINGS.txt — open from AI Studio Launcher after install."
+  install_ai_studio_web_app
+}
+
+install_ai_studio_web_app() {
+  local src="$SCRIPT_DIR/assets/AI-Studio-Web.app"
+  local dest="$EXTERNAL_AI/Applications/AI Studio Web.app"
+  [[ -d "$src" ]] || { warn "AI Studio Web.app missing from installer — browser shortcuts will use Safari fallback"; return 0; }
+  run rm -rf "$dest"
+  run cp -R "$src" "$dest"
+  chmod +x "$dest/Contents/MacOS/ai-studio-web"
+  ok "AI Studio Web (light local browser) → Applications/"
 }
 
 install_open_webui() {
@@ -1186,7 +1197,7 @@ Those are CHAT / CODING tools — not the same as our image-generation stack.
 
 ── MAKE PHOTOREAL IMAGES (this is what the ~140 GB install is for) ──
 
-  ComfyUI (browser → http://127.0.0.1:8188)
+  ComfyUI (AI Studio Web → http://127.0.0.1:8188)
     Pro generation + editing: Flux, SDXL, inpaint, relight, upscale.
     Uses models in comfyui-models/ on your SSD.
 
@@ -1342,6 +1353,28 @@ open_diffusionbee() {
   open "${LOCAL_AI_ROOT}/Applications/DiffusionBee.app" 2>/dev/null || true
 }
 
+# Opens localhost UIs in AI Studio Web (or Chrome app-mode / Safari) — not the default browser.
+open_local_url() {
+  local url="${1:?URL required}"
+  local app="${LOCAL_AI_ROOT}/Applications/AI Studio Web.app"
+  if [[ -d "$app" ]]; then
+    open -na "$app" --args "$url"
+    return 0
+  fi
+  local bin
+  for bin in \
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+    "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
+    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"; do
+    if [[ -x "$bin" ]]; then
+      "$bin" --app="$url" --new-window --no-first-run --disable-features=TranslateUI &>/dev/null &
+      return 0
+    fi
+  done
+  open -na "Safari" "$url"
+}
+
 comfyui_alert() {
   osascript -e "display alert \"ComfyUI\" message \"$1\"" 2>/dev/null || true
 }
@@ -1379,7 +1412,7 @@ start_comfyui() {
   local i code
   for i in $(seq 1 90); do
     code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8188/ 2>/dev/null || echo "000")
-    [[ "$code" == "200" ]] && { open "http://127.0.0.1:8188"; return 0; }
+    [[ "$code" == "200" ]] && { open_local_url "http://127.0.0.1:8188"; return 0; }
     sleep 2
   done
   comfyui_alert "ComfyUI is still starting (custom nodes on ExFAT can take a few minutes). Wait, then open http://127.0.0.1:8188 or click the shortcut again."
@@ -1416,7 +1449,7 @@ start_open_webui() {
     docker start open-webui &>/dev/null || true
   fi
   sleep 3
-  open "http://localhost:8080"
+  open_local_url "http://127.0.0.1:8080"
 }
 
 open_draw_things() {
@@ -1473,12 +1506,13 @@ CMD
 create_studio_hub() {
   local hub="$EXTERNAL_AI/AI Studio Apps"
   run mkdir -p "$hub"
+  rm -f "$hub/ComfyUI (browser).command" "$hub/Open WebUI (browser).command" 2>/dev/null || true
 
   write_hub_command "$hub/Launch All.command" "launch_all"
   write_hub_command "$hub/LM Studio.command" "open_lm_studio"
   write_hub_command "$hub/DiffusionBee.command" "open_diffusionbee"
-  write_hub_command "$hub/ComfyUI (browser).command" "start_comfyui"
-  write_hub_command "$hub/Open WebUI (browser).command" "start_open_webui"
+  write_hub_command "$hub/ComfyUI (light browser).command" "start_comfyui"
+  write_hub_command "$hub/Open WebUI (light browser).command" "start_open_webui"
   write_hub_command "$hub/Draw Things (App Store).command" "open_draw_things"
 
   cat > "$hub/README — start here.txt" <<README
@@ -1490,8 +1524,9 @@ Double-click any shortcut below (or use "AI Studio Launcher" on your Desktop).
   Launch All.command          → starts Ollama + all apps + browser tabs
   LM Studio.command           → photo analysis, vision chat
   DiffusionBee.command        → quick realistic image generation
-  ComfyUI (browser).command   → photo editing workflows (localhost:8188)
-  Open WebUI (browser).command → chat in browser (localhost:8080, needs Docker)
+  ComfyUI (light browser).command   → ComfyUI in AI Studio Web (localhost:8188)
+  Open WebUI (light browser).command → chat in AI Studio Web (localhost:8080, needs Docker)
+  AI Studio Web.app (in Applications/) → light isolated window, not your default browser
   Draw Things (App Store).command → optional native editor (install separately)
 
 Full studio root: $EXTERNAL_AI
@@ -1606,7 +1641,7 @@ TIER: $(tier_blurb "$(tier_level "$INSTALL_TIER")")
 
 Apps:
   • LM Studio, DiffusionBee — in Applications/ on SSD
-  • ComfyUI, Open WebUI — open in browser (shortcuts in AI Studio Apps/)
+  • ComfyUI, Open WebUI — AI Studio Web (isolated window, not your default browser)
 
 Which app for what?  docs/WHICH_APP.txt  (Ollama vs ComfyUI vs DiffusionBee)
 Photoreal models:   docs/MODELS_INSTALLED.txt
@@ -1777,6 +1812,7 @@ main() {
     fi
     [[ -n "$INSTALL_TIER" ]] || die "--tier required if LOCAL_AI_GEN has no prior install"
     [[ -f "$EXTERNAL_AI/scripts/local-ai-env.sh" ]] || setup_environment
+    install_ai_studio_web_app
     create_launchers
     ok "Desktop shortcuts created — run INSTALL again to continue model downloads."
     exit 0
